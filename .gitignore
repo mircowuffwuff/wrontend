@@ -2,3 +2,7 @@
 .notes/
 # Claude Code's personal settings, as Claude Code itself recommends
 .claude/settings.local.json
+# dependencies and build output
+node_modules/
+out/
+dist/

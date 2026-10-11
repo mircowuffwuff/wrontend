@@ -20,7 +20,7 @@ export function Composer({ session }: { session: SessionView | null }) {
   const models = useOllama((s) => s.models);
   const loaded = useOllama((s) => s.status?.loaded);
   const draft = useDraft();
-  const { createAndPrompt, prompt, cancel, answer, setModel, setEffort, creating } = useSessions();
+  const { createAndPrompt, prompt, cancel, answer, setModel, setEffort, setMode, creating } = useSessions();
 
   const fresh = session === null;
   const model = fresh ? draft.model : session.info.model;
@@ -39,7 +39,7 @@ export function Composer({ session }: { session: SessionView | null }) {
 
   useEffect(() => area.current?.focus(), [session?.info.id]);
 
-  const canSend = text.trim().length > 0 && !!model && (!fresh || !!draft.folder) && !running && !session?.exited;
+  const canSend = text.trim().length > 0 && !!model && (!fresh || !!draft.folder) && !running;
 
   const send = () => {
     if (!canSend || !model) return;
@@ -112,7 +112,17 @@ export function Composer({ session }: { session: SessionView | null }) {
           <button className="icon-button" aria-label="Attach">
             <Icon name="plus" size={16} />
           </button>
-          <span className="picker">Default</span>
+          {session && session.modes.available.length > 0 ? (
+            <Menu
+              trigger={<span>{session.modes.available.find((m) => m.id === session.modes.current)?.name ?? 'Mode'}</span>}
+              items={session.modes.available.map((m) => ({ key: m.id, label: m.name, detail: m.description ?? undefined, selected: m.id === session.modes.current }))}
+              onPick={(modeId) => void setMode(session.info.id, modeId)}
+            />
+          ) : (
+            <span className="picker muted" title="The harness's modes appear once the session has started">
+              Default
+            </span>
+          )}
           <span className="spacer" />
           <Menu
             align="end"

@@ -853,3 +853,13 @@ kbd {
   font-size: 13px;
   padding-left: 18px;
 }
+
+.top-bar .picker {
+  max-width: 520px;
+  color: var(--text);
+}
+.top-bar .session-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

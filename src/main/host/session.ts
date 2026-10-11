@@ -10,9 +10,10 @@ import {
   PROTOCOL_VERSION,
   type ClientConnection,
   type RequestPermissionResponse,
+  type SessionModeState,
 } from '@agentclientprotocol/sdk';
 import type { RouteSettings } from '@shared/proxy';
-import type { PermissionRequest, SessionEvent } from '@shared/session';
+import type { PermissionRequest, SessionEvent, SessionModes } from '@shared/session';
 import type { RouteHandle } from '../proxy/server';
 import type { HarnessProfile } from './profiles';
 
@@ -34,6 +35,9 @@ export class AgentSession {
   private readonly pending = new Map<string, (answer: RequestPermissionResponse) => void>();
   private readonly stderr: string[] = [];
   private turn: Promise<void> | null = null;
+  // set when wrontend itself stops the process, whose exit is then no news
+  private disposing = false;
+  private lastModes: SessionModes | null = null;
 
   constructor(private readonly o: AgentSessionOptions) {}
 
@@ -41,7 +45,13 @@ export class AgentSession {
     return this.turn !== null;
   }
 
-  async start(): Promise<void> {
+  // the harness's own id for this session, kept so the session can be reopened after a restart
+  get harnessSessionId(): string | null {
+    return this.acpSessionId;
+  }
+
+  // with resumeId, reopens the harness's earlier session; returns how it started
+  async start(resumeId: string | null = null): Promise<'new' | 'resumed' | 'fresh-after-resume-failed'> {
     mkdirSync(this.o.harnessHome, { recursive: true });
     const launch = this.o.profile.launch({ proxyUrl: this.o.route.baseUrl, harnessHome: this.o.harnessHome });
     const child = spawn(launch.command, launch.args, {
@@ -64,7 +74,7 @@ export class AgentSession {
       this.connection?.close();
       this.child = null;
       this.closeAllPermissions();
-      this.o.emit({ sessionId: this.o.id, type: 'exit', code, detail: this.stderr.join('\n') });
+      if (!this.disposing) this.o.emit({ sessionId: this.o.id, type: 'exit', code, detail: this.stderr.join('\n') });
     });
 
     const stream = ndJsonStream(
@@ -86,13 +96,27 @@ export class AgentSession {
     this.connection = app.connect(stream);
 
     const agent = this.connection.agent;
-    await agent.request('initialize', {
+    const init = await agent.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
       clientInfo: { name: 'wrontend', version: '0.1.0' },
     });
+
+    // resume reopens a session without replaying it -- wrontend already shows its own copy of the transcript
+    if (resumeId && init.agentCapabilities?.sessionCapabilities?.resume) {
+      try {
+        const resumed = await agent.request('session/resume', { sessionId: resumeId, cwd: this.o.folder, mcpServers: [] });
+        this.acpSessionId = resumeId;
+        this.reportModes(resumed.modes);
+        return 'resumed';
+      } catch {
+        // the harness no longer has it -- a fresh session keeps the transcript usable, without the earlier context
+      }
+    }
     const created = await agent.request('session/new', { cwd: this.o.folder, mcpServers: [] });
     this.acpSessionId = created.sessionId;
+    this.reportModes(created.modes);
+    return resumeId ? 'fresh-after-resume-failed' : 'new';
   }
 
   // resolves when the turn is over; its end is also reported as an event
@@ -122,6 +146,21 @@ export class AgentSession {
     await this.connection.agent.notify('session/cancel', { sessionId: this.acpSessionId });
   }
 
+  async setMode(modeId: string): Promise<void> {
+    if (!this.connection || !this.acpSessionId) throw new Error('the session has not started');
+    await this.connection.agent.request('session/set_mode', { sessionId: this.acpSessionId, modeId });
+  }
+
+  // the modes the harness reported last
+  get modes(): SessionModes | null {
+    return this.lastModes;
+  }
+
+  private reportModes(modes: SessionModeState | null | undefined): void {
+    if (modes) this.lastModes = { current: modes.currentModeId, available: modes.availableModes };
+    if (modes) this.o.emit({ sessionId: this.o.id, type: 'modes', current: modes.currentModeId, available: modes.availableModes });
+  }
+
   // a null option means the request was dismissed, which ACP calls cancelled
   answer(requestId: string, optionId: string | null): void {
     const resolve = this.pending.get(requestId);
@@ -136,6 +175,7 @@ export class AgentSession {
   }
 
   dispose(): void {
+    this.disposing = true;
     this.closeAllPermissions();
     this.connection?.close();
     killTree(this.child);

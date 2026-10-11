@@ -44,7 +44,7 @@ describe.skipIf(!live)('Claude Code end to end', () => {
       host = new AgentHost(proxy, dataDir, emit);
 
       const model = process.env.WRONTEND_MODEL ?? 'qwen3.8:27b-ud-iq3_s-derived-renderer';
-      const info = await host.create({ harness: 'claude-code', folder, model, effort: 'on' });
+      const { info } = await host.create({ harness: 'claude-code', folder, model, effort: 'on' });
       const ended = new Promise<SessionEvent>((resolve) => {
         const check = setInterval(() => {
           const end = events.find((e) => e.type === 'turn-end' || e.type === 'exit');

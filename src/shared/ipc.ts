@@ -2,7 +2,7 @@
 
 import type { ModelDetails, ModelSummary, OllamaStatus } from './ollama';
 import type { Effort } from './proxy';
-import type { CreateSessionOptions, SessionEvent, SessionInfo } from './session';
+import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
 
 export interface InvokeMap {
   'window:minimize': { args: []; result: void };
@@ -12,12 +12,16 @@ export interface InvokeMap {
   'ollama:status': { args: []; result: OllamaStatus };
   'ollama:models': { args: []; result: ModelSummary[] };
   'ollama:show': { args: [name: string]; result: ModelDetails | null };
-  'session:create': { args: [options: CreateSessionOptions]; result: SessionInfo };
+  'session:stored': { args: []; result: StoredSession[] };
+  'session:create': { args: [options: CreateSessionOptions]; result: CreatedSession };
+  'session:save-items': { args: [id: string, items: unknown[]]; result: void };
+  'session:delete': { args: [id: string]; result: void };
   'session:prompt': { args: [id: string, text: string]; result: void };
   'session:cancel': { args: [id: string]; result: void };
   'session:answer': { args: [id: string, requestId: string, optionId: string | null]; result: void };
   'session:set-model': { args: [id: string, model: string]; result: void };
   'session:set-effort': { args: [id: string, effort: Effort]; result: void };
+  'session:set-mode': { args: [id: string, modeId: string]; result: void };
 }
 
 export interface EventMap {

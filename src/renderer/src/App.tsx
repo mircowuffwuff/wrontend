@@ -3,6 +3,7 @@ import { bridge } from './bridge';
 import { Composer } from './components/Composer';
 import { Icon } from './components/Icon';
 import { Leaf } from './components/Leaf';
+import { Menu } from './components/Menu';
 import { Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
 import { useDraft } from './state/draft';
@@ -31,7 +32,19 @@ export function App() {
               <span className="harness-icon muted" title="Claude Code">
                 <Icon name="harness" size={18} />
               </span>
-              <span className="session-title">{session.info.title}</span>
+              <Menu
+                placement="below"
+                trigger={
+                  <span className="session-title">
+                    {session.info.title}
+                    <Icon name="chevronDown" size={14} />
+                  </span>
+                }
+                items={[{ key: 'delete', label: 'Delete Session', detail: 'Removes it from wrontend; the harness keeps its own history' }]}
+                onPick={(key) => {
+                  if (key === 'delete' && window.confirm(`Delete “${session.info.title}”?`)) void useSessions.getState().remove(session.info.id);
+                }}
+              />
               <span className="chip" title={session.info.folder}>
                 {session.info.folder.split(/[\\/]/).pop()}
               </span>

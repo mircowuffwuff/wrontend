@@ -112,12 +112,16 @@ function registerHandlers(): void {
       return null;
     }
   });
+  handle('session:stored', () => sessions().stored());
   handle('session:create', (options) => sessions().create(options));
+  handle('session:save-items', (id, items) => sessions().saveItems(id, items));
+  handle('session:delete', (id) => sessions().delete(id));
   handle('session:prompt', (id, text) => sessions().prompt(id, text));
   handle('session:cancel', (id) => sessions().cancel(id));
   handle('session:answer', (id, requestId, optionId) => sessions().answer(id, requestId, optionId));
   handle('session:set-model', (id, model) => sessions().setModel(id, model));
   handle('session:set-effort', (id, effort) => sessions().setEffort(id, effort));
+  handle('session:set-mode', (id, modeId) => sessions().setMode(id, modeId));
 }
 
 function sessions(): AgentHost {

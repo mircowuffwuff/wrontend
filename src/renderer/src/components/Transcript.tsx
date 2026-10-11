@@ -61,7 +61,15 @@ export function Transcript({ session }: { session: SessionView }) {
   const blocks = group(session.items);
   const lastBlock = blocks[blocks.length - 1];
 
-  // follow new content only while the view is already at the bottom
+  // a message the user just sent always brings the view to the bottom, and so does opening a session
+  const lastUser = [...session.items].reverse().find((i) => i.kind === 'user')?.id;
+  useLayoutEffect(() => {
+    setAtBottom(true);
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lastUser, session.info.id]);
+
+  // after that, new content is followed only while the view is already at the bottom
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && atBottom) el.scrollTop = el.scrollHeight;

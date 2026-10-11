@@ -1,6 +1,6 @@
 # wrontend
 
-this is an [Electron](https://github.com/electron/electron) app that leverages [ACP](https://github.com/agentclientprotocol/agent-client-protocol) to combine multiple different agents into one unified experience.
+this is an [Ollama](https://github.com/ollama/ollama)-powered [Electron](https://github.com/electron/electron) app that leverages [ACPs](https://github.com/agentclientprotocol/agent-client-protocol) to combine multiple different agent harnesses into one, unified experience.
 
 ## license
 

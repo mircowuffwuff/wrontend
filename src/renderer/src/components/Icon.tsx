@@ -1,0 +1,42 @@
+// the app's line icons, drawn on a 24-unit grid with a 1.6 stroke
+
+const PATHS = {
+  menu: 'M4 7h16M4 12h16M4 17h10',
+  sidebar: 'M4 5h16v14H4zM9.5 5v14',
+  back: 'M15 5l-7 7 7 7',
+  forward: 'M9 5l7 7-7 7',
+  search: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.5 15.5 20 20',
+  plus: 'M12 5v14M5 12h14',
+  chevronDown: 'M6 9l6 6 6-6',
+  chevronRight: 'M9 6l6 6-6 6',
+  folder: 'M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z',
+  branch: 'M7 4v12M7 16a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM17 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM17 8c0 5-10 3-10 8',
+  harness: 'M4 6h16v10H4zM9 20h6M12 16v4M7.5 9.5l2 1.5-2 1.5M11.5 12.5h4',
+  changes: 'M6 3.5h9l3.5 3.5v13.5H6zM12 9v6M9 12h6M9 17.5h6',
+  files: 'M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z',
+  more: 'M12 6.5v.01M12 12v.01M12 17.5v.01',
+  send: 'M12 19V6M6.5 11.5 12 6l5.5 5.5',
+  stop: 'M8 8h8v8H8z',
+  settings:
+    'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7 7 0 0 1-1.9 1.1l-.3 2h-3.8l-.3-2a7 7 0 0 1-1.9-1.1l-1.9.7-2-3.4 1.6-1.2a7 7 0 0 1 0-3l-1.6-1.2 2-3.4 1.9.7a7 7 0 0 1 1.9-1.1l.3-2h3.8l.3 2a7 7 0 0 1 1.9 1.1l1.9-.7 2 3.4-1.6 1.2a7 7 0 0 1 0 3z',
+} as const;
+
+export type IconName = keyof typeof PATHS;
+
+export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={PATHS[name]} />
+    </svg>
+  );
+}

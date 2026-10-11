@@ -99,7 +99,10 @@ function registerHandlers(): void {
   // WRONTEND_AUTOPROMPT=<folder>|<model>|<prompt> starts one session as the app opens -- for exercising a real turn without clicking.
   // WRONTEND_HARNESS picks its harness, Claude Code unless set
   handle('app:autoprompt', () => {
-    const [folder, model, ...text] = (process.env.WRONTEND_AUTOPROMPT ?? '').split('|');
+    // once per run: a reloaded window must not start the session again
+    const value = process.env.WRONTEND_AUTOPROMPT ?? '';
+    delete process.env.WRONTEND_AUTOPROMPT;
+    const [folder, model, ...text] = value.split('|');
     const harness = process.env.WRONTEND_HARNESS ?? 'claude-code';
     return folder && model && text.length ? { harness, folder, model, text: text.join('|') } : null;
   });

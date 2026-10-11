@@ -12,8 +12,10 @@ export function smokeFolder(): string | null {
   return arg ? resolve(arg.slice('--smoke='.length)) : (process.env.WRONTEND_SMOKE ?? null);
 }
 
-// what the smoke test needs set before the window loads: the fake agent and an autoprompt in a throwaway folder
+// what the smoke test needs set before the app is ready: its own data folder -- the user's sessions stay untouched --
+// the fake agent, and an autoprompt in a throwaway project folder
 export function prepareSmoke(): void {
+  app.setPath('userData', realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-data-'))));
   const project = realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-')));
   process.env.WRONTEND_HARNESS = 'fake';
   process.env.WRONTEND_AUTOPROMPT = `${project}|smoke-model|Please make the readme say what wrontend is.`;
@@ -107,6 +109,15 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await js(`document.querySelector('.error-block .tool-summary')?.click()`);
     await shot('06-error-shown');
   });
+  await step('07-mode-picker', async () => {
+    const picker = `[...document.querySelectorAll('.under-row .picker')].find((b) => b.textContent.trim() === 'Default')`;
+    await waitFor(`${picker}?.tagName === 'BUTTON'`);
+    await js(`${picker}.click()`);
+    await waitFor(`document.querySelector('.menu')`);
+    await shot('07-mode-menu');
+    await js(`[...document.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Plan Mode')).click()`);
+    await waitFor(`[...document.querySelectorAll('.under-row .picker')].some((b) => b.textContent.trim() === 'Plan Mode')`);
+  });
   await step('07-light-theme', async () => {
     nativeTheme.themeSource = 'light';
     await new Promise((r) => setTimeout(r, 400));
@@ -114,10 +125,37 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await shot('07-light-theme');
     nativeTheme.themeSource = 'system';
   });
-  await step('08-new-session-screen', async () => {
-    await js(`[...document.querySelectorAll('.nav-item')].find((b) => b.textContent.trim() === 'New').click()`);
-    await waitFor(`document.querySelector('.greeting')`);
-    await shot('08-new-session-screen');
+  await step('08-reload-restores', async () => {
+    const before = await js<number>(`document.querySelectorAll('.transcript > *').length`);
+    win.webContents.reload();
+    await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
+    await waitFor(`document.querySelector('.session-row')`);
+    await new Promise((r) => setTimeout(r, 500));
+    const rows = await js<number>(`document.querySelectorAll('.session-row').length`);
+    if (rows !== 1) throw new Error(`expected the one stored session after the reload, found ${rows}`);
+    await js(`document.querySelector('.session-row').click()`);
+    await waitFor(`document.querySelector('.transcript .user-message')`);
+    const after = await js<number>(`document.querySelectorAll('.transcript > *').length`);
+    const kept = await js<boolean>(`!!document.querySelector('.transcript .markdown code') && [...document.querySelectorAll('.notice')].some((n) => n.textContent === 'Stopped') && !!document.querySelector('.error-block')`);
+    if (!kept) throw new Error('the restored transcript lost its answer, its Stopped line or its error');
+    const mode = await js<boolean>(`[...document.querySelectorAll('.under-row .picker')].some((b) => b.textContent.trim() === 'Plan Mode')`);
+    if (!mode) throw new Error('the restored session no longer shows the mode it was left in');
+    // the tool group comes back collapsed, so fewer blocks are open than before
+    if (after < 6) throw new Error(`the transcript had ${before} blocks before the reload and ${after} after`);
+    await js(`document.querySelector('.content').scrollTop = 0`);
+    await shot('08-reload-restores');
+  });
+  await step('09-delete-session', async () => {
+    // the confirmation is answered yes: a hidden window cannot show a dialog
+    await js(`window.confirm = () => true; true`);
+    await js(`document.querySelector('.top-bar .picker').click()`);
+    await waitFor(`document.querySelector('.top-bar .menu')`);
+    await shot('09-session-menu');
+    await js(`[...document.querySelectorAll('.top-bar .menu-item')].find((b) => b.textContent.includes('Delete Session')).click()`);
+    await waitFor(`!document.querySelector('.session-row') && document.querySelector('.greeting')`);
+    const left = await js<number>(`window.wrontend.invoke('session:stored').then((s) => s.length)`);
+    if (left !== 0) throw new Error(`${left} sessions are still stored after deleting the only one`);
+    await shot('09-new-session-screen');
   });
 
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;

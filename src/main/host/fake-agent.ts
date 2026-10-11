@@ -36,7 +36,20 @@ const app = agent({ name: 'wrontend-fake-agent' })
     agentCapabilities: { loadSession: false },
     agentInfo: { name: 'wrontend-fake-agent', version: '0.1.0' },
   }))
-  .onRequest('session/new', () => ({ sessionId: `fake-${Date.now()}` }))
+  .onRequest('session/new', () => ({
+    sessionId: `fake-${Date.now()}`,
+    modes: {
+      currentModeId: 'default',
+      availableModes: [
+        { id: 'default', name: 'Default', description: 'Asks before edits and commands' },
+        { id: 'plan', name: 'Plan Mode', description: 'Plans without changing anything' },
+      ],
+    },
+  }))
+  .onRequest('session/set_mode', async ({ params, client }) => {
+    await update(client, params.sessionId, { sessionUpdate: 'current_mode_update', currentModeId: params.modeId });
+    return {};
+  })
   .onNotification('session/cancel', ({ params }) => {
     cancelled.add(params.sessionId);
   })

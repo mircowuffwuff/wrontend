@@ -1,0 +1,4 @@
+# private notes -- never part of the repo
+.notes/
+# Claude Code's personal settings, as Claude Code itself recommends
+.claude/settings.local.json

@@ -46,7 +46,7 @@ export class AgentSession {
     const launch = this.o.profile.launch({ proxyUrl: this.o.route.baseUrl, harnessHome: this.o.harnessHome });
     const child = spawn(launch.command, launch.args, {
       cwd: this.o.folder,
-      env: { ...process.env, ...launch.env },
+      env: { ...inheritedEnv(), ...launch.env },
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -146,6 +146,15 @@ export class AgentSession {
   private closeAllPermissions(): void {
     for (const id of [...this.pending.keys()]) this.answer(id, null);
   }
+}
+
+// wrontend's own environment, minus anything that would steer a harness's backend or Claude Code's behaviour: the profile sets those itself
+function inheritedEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!/^(ANTHROPIC_|CLAUDE_|CLAUDECODE)/i.test(key)) env[key] = value;
+  }
+  return env;
 }
 
 function describe(cause: unknown, stderr: string[]): string {

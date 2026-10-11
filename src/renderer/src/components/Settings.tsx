@@ -3,8 +3,10 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import type { BackgroundPolicy } from '@shared/proxy';
-import type { AboutInfo, Settings, SettingsPatch } from '@shared/settings';
+import type { AboutInfo, OllamaServerState, OllamaServerValues, OllamaServerVar, Settings, SettingsPatch } from '@shared/settings';
 import { bridge } from '../bridge';
+import { useOllama } from '../state/ollama';
+import { useSessions } from '../state/sessions';
 import { errorText, useSettings } from '../state/settings';
 import { Icon, type IconName } from './Icon';
 import { Menu } from './Menu';
@@ -82,6 +84,11 @@ function Select<T extends string | null>({ value, options, onChange }: { value: 
   );
 }
 
+// a value set outside wrontend that none of the options names still shows, as itself
+function withCurrent<T extends string | null>(options: Option<T>[], value: T): Option<T>[] {
+  return options.some((o) => o.value === value) ? options : [...options, { value, label: String(value) }];
+}
+
 // commits on Enter or when it loses focus; Escape puts the stored value back
 function TextField({ value, placeholder, onCommit, label }: { value: string; placeholder?: string; onCommit: (value: string) => Promise<void>; label: string }) {
   const [draft, setDraft] = useState(value);
@@ -118,6 +125,8 @@ function TextField({ value, placeholder, onCommit, label }: { value: string; pla
   );
 }
 
+const RESTART_NOTE = <div className="setting-pending">Restart required for this change to take effect</div>;
+
 const BACKGROUND: Option<BackgroundPolicy>[] = [
   { value: 'local-titles', label: 'Answer titles in wrontend', detail: 'Title requests never reach the model; other side requests do' },
   { value: 'pass', label: 'Send all to the model', detail: 'Every side request reaches the model' },
@@ -125,14 +134,139 @@ const BACKGROUND: Option<BackgroundPolicy>[] = [
   { value: 'refuse', label: 'Refuse', detail: 'Side requests fail with an error, which a harness may not handle' },
 ];
 
+const CONTEXT: Option<string | null>[] = [
+  { value: null, label: 'Ollama’s default', detail: 'Chosen by Ollama from the GPU’s memory' },
+  ...[8, 16, 32, 64, 128, 256].map((k) => ({ value: String(k * 1024), label: `${k}K tokens` })),
+];
+
+const PARALLEL: Option<string | null>[] = [{ value: null, label: 'Ollama’s default' }, ...['1', '2', '4'].map((n) => ({ value: n, label: n }))];
+
+const KEEP_ALIVE: Option<string | null>[] = [
+  { value: null, label: '5 minutes', detail: 'Ollama’s default' },
+  { value: '30m', label: '30 minutes' },
+  { value: '1h', label: '1 hour' },
+  { value: '4h', label: '4 hours' },
+  { value: '-1', label: 'Until Ollama stops' },
+  { value: '0', label: 'Unload after each reply' },
+];
+
 function sections(o: {
   settings: Settings;
   update: (patch: SettingsPatch) => Promise<void>;
+  server: OllamaServerState | null;
+  setServer: (changes: Partial<OllamaServerValues>) => void;
+  serverError: string | null;
   defaultAddress: string;
+  ollamaPanel: ReactNode;
   about: AboutInfo | null;
 }): Section[] {
-  const { settings, update } = o;
+  const { settings, update, server } = o;
   const a = settings.appearance;
+  const pending = (name: OllamaServerVar) => (server?.pending.includes(name) ? RESTART_NOTE : undefined);
+  const value = (name: OllamaServerVar) => server?.values[name] ?? null;
+
+  const serverRows: Row[] =
+    server && !server.unsupported
+      ? [
+          {
+            id: 'ollama-models',
+            label: 'Models folder',
+            description: 'Where Ollama keeps its models. Changing it does not move the models already stored.',
+            note: (
+              <>
+                {value('OLLAMA_MODELS') ? (
+                  <div className="setting-path mono">{value('OLLAMA_MODELS')}</div>
+                ) : (
+                  <div className="setting-path muted">Ollama’s default, in your user folder</div>
+                )}
+                {pending('OLLAMA_MODELS')}
+              </>
+            ),
+            control: (
+              <div className="control-row">
+                {value('OLLAMA_MODELS') && (
+                  <button className="button" onClick={() => o.setServer({ OLLAMA_MODELS: null })}>
+                    Default
+                  </button>
+                )}
+                <button
+                  className="button"
+                  onClick={() =>
+                    void bridge.invoke('dialog:pick-folder').then((folder) => {
+                      if (folder) o.setServer({ OLLAMA_MODELS: folder });
+                    })
+                  }
+                >
+                  Choose…
+                </button>
+              </div>
+            ),
+          },
+          {
+            id: 'ollama-context',
+            label: 'Context length',
+            description: 'How much of a conversation a model holds. Agents need 64K tokens or more; a longer context takes more memory.',
+            note: pending('OLLAMA_CONTEXT_LENGTH'),
+            control: <Select value={value('OLLAMA_CONTEXT_LENGTH')} options={withCurrent(CONTEXT, value('OLLAMA_CONTEXT_LENGTH'))} onChange={(v) => o.setServer({ OLLAMA_CONTEXT_LENGTH: v })} />,
+          },
+          {
+            id: 'ollama-parallel',
+            label: 'Parallel requests',
+            description: 'How many requests a loaded model answers at once. Each takes its own share of the context’s memory.',
+            note: pending('OLLAMA_NUM_PARALLEL'),
+            control: <Select value={value('OLLAMA_NUM_PARALLEL')} options={withCurrent(PARALLEL, value('OLLAMA_NUM_PARALLEL'))} onChange={(v) => o.setServer({ OLLAMA_NUM_PARALLEL: v })} />,
+          },
+          {
+            id: 'ollama-flash',
+            label: 'Flash attention',
+            description: 'Uses less memory for long contexts, and is needed for a smaller KV cache.',
+            note: pending('OLLAMA_FLASH_ATTENTION'),
+            control: (
+              <Segmented
+                label="Flash attention"
+                value={value('OLLAMA_FLASH_ATTENTION')}
+                options={withCurrent<string | null>(
+                  [
+                    { value: null, label: 'Default' },
+                    { value: '1', label: 'On' },
+                    { value: '0', label: 'Off' },
+                  ],
+                  value('OLLAMA_FLASH_ATTENTION'),
+                )}
+                onChange={(v) => o.setServer({ OLLAMA_FLASH_ATTENTION: v })}
+              />
+            ),
+          },
+          {
+            id: 'ollama-kv',
+            label: 'KV cache type',
+            description: 'How the context is stored in memory. q8_0 takes about half of f16’s memory, q4_0 a quarter. Needs flash attention.',
+            note: pending('OLLAMA_KV_CACHE_TYPE'),
+            control: (
+              <Segmented
+                label="KV cache type"
+                value={value('OLLAMA_KV_CACHE_TYPE')}
+                options={withCurrent<string | null>(
+                  [
+                    { value: null, label: 'f16', title: 'f16, Ollama’s default' },
+                    { value: 'q8_0', label: 'q8_0' },
+                    { value: 'q4_0', label: 'q4_0' },
+                  ],
+                  value('OLLAMA_KV_CACHE_TYPE'),
+                )}
+                onChange={(v) => o.setServer({ OLLAMA_KV_CACHE_TYPE: v })}
+              />
+            ),
+          },
+          {
+            id: 'ollama-keep-alive',
+            label: 'Keep loaded',
+            description: 'How long a model stays in memory after its last request.',
+            note: pending('OLLAMA_KEEP_ALIVE'),
+            control: <Select value={value('OLLAMA_KEEP_ALIVE')} options={withCurrent(KEEP_ALIVE, value('OLLAMA_KEEP_ALIVE'))} onChange={(v) => o.setServer({ OLLAMA_KEEP_ALIVE: v })} />,
+          },
+        ]
+      : [];
 
   return [
     {
@@ -242,6 +376,7 @@ function sections(o: {
       groups: [
         {
           heading: 'Connection',
+          intro: o.ollamaPanel,
           rows: [
             {
               id: 'ollama-address',
@@ -250,6 +385,19 @@ function sections(o: {
               control: <TextField label="Ollama address" value={settings.ollama.address} placeholder={o.defaultAddress} onCommit={(address) => update({ ollama: { address } })} />,
             },
           ],
+        },
+        {
+          heading: 'Server',
+          intro: (
+            <>
+              {server?.unsupported && <p className="setting-intro">{server.unsupported} Its server settings are changed where it runs.</p>}
+              {server && !server.unsupported && (
+                <p className="setting-intro">Ollama reads these when it starts. wrontend stores them as your user environment variables, where Ollama’s own app finds them too.</p>
+              )}
+              {o.serverError && <div className="setting-error">{o.serverError}</div>}
+            </>
+          ),
+          rows: serverRows,
         },
       ],
     },
@@ -316,6 +464,47 @@ function sections(o: {
   ];
 }
 
+// the Ollama section's head: what runs, and the button that restarts it
+function OllamaPanel({ server, onRestarted }: { server: OllamaServerState | null; onRestarted: () => void }) {
+  const status = useOllama((s) => s.status);
+  const restarting = useOllama((s) => s.restarting);
+  const generating = useSessions((s) => Object.values(s.sessions).some((x) => x.running));
+  const [error, setError] = useState<string | null>(null);
+  const canRestart = server !== null && !server.unsupported;
+  const pending = server?.pending.length ?? 0;
+  const running = status?.reachable ?? false;
+
+  const restart = () => {
+    setError(null);
+    bridge.invoke('ollama:restart').then(onRestarted, (cause) => setError(errorText(cause)));
+  };
+
+  let state = 'Looking for Ollama…';
+  if (restarting) state = 'Restarting…';
+  else if (status) state = running ? `Ollama ${status.version ?? ''} is running at ${status.baseUrl}` : `Ollama is not running at ${status.baseUrl}`;
+
+  return (
+    <div className="ollama-panel">
+      <div className="setting-text">
+        <div className="setting-label">{state}</div>
+        {canRestart && (
+          <div className="setting-description">
+            {pending ? `${pending === 1 ? 'A change waits' : `${pending} changes wait`} for a restart.` : running ? 'Stops Ollama and starts it again with the settings below.' : 'Starts Ollama with the settings below.'}
+            {running && generating && ' A reply being written now stops.'}
+          </div>
+        )}
+        {error && <div className="setting-error">{error}</div>}
+      </div>
+      {canRestart && (
+        <button className={`button${running ? ' danger' : ''}${pending ? ' strong' : ''}`} disabled={restarting} onClick={restart}>
+          <Icon name="restart" size={16} />
+          {restarting ? 'Restarting…' : running ? 'Restart Ollama' : 'Start Ollama'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RowView({ row }: { row: Row }) {
   return (
     <div className="setting-row">
@@ -335,13 +524,25 @@ export function SettingsDialog() {
   const update = useSettings((s) => s.update);
   const { open, close } = useSettings.getState();
   const [query, setQuery] = useState('');
+  const [server, setServerState] = useState<OllamaServerState | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
   const [about, setAbout] = useState<AboutInfo | null>(null);
   const [defaultAddress, setDefaultAddress] = useState('');
 
+  const loadServer = () =>
+    void bridge.invoke('ollama:server').then(
+      (state) => {
+        setServerState(state);
+        setServerError(null);
+      },
+      (cause) => setServerError(errorText(cause)),
+    );
   useEffect(() => {
     void bridge.invoke('app:about').then(setAbout);
     void bridge.invoke('ollama:default-address').then(setDefaultAddress);
   }, []);
+  // on opening, and again when a changed address makes Ollama local or remote
+  useEffect(loadServer, [settings.ollama.address]);
 
   useEffect(() => {
     const escape = (e: KeyboardEvent) => {
@@ -355,7 +556,18 @@ export function SettingsDialog() {
   const all = sections({
     settings,
     update,
+    server,
+    setServer: (changes) =>
+      void bridge.invoke('ollama:set-server', changes).then(
+        (state) => {
+          setServerState(state);
+          setServerError(null);
+        },
+        (cause) => setServerError(errorText(cause)),
+      ),
+    serverError,
     defaultAddress,
+    ollamaPanel: <OllamaPanel server={server} onRestarted={loadServer} />,
     about,
   });
 

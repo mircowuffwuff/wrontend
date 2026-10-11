@@ -205,6 +205,16 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await shot('10-settings-light');
     await settingsClick('Theme', 'System');
   });
+  await step('11-settings-ollama', async () => {
+    await js(`[...document.querySelectorAll('.settings-nav .nav-item')].find((b) => b.textContent === 'Ollama').click()`);
+    await waitFor(`document.querySelector('.ollama-panel') && [...document.querySelectorAll('.setting-label')].some((l) => l.textContent === 'KV cache type')`);
+    if (await js<boolean>(`!!document.querySelector('.setting-pending')`)) throw new Error('a setting shows as pending before anything changed');
+    await settingsClick('KV cache type', 'q8_0');
+    await waitFor(`document.querySelector('.setting-pending')`);
+    const context = await js<string>(`[...document.querySelectorAll('.setting-row')].find((r) => r.textContent.startsWith('Context length')).querySelector('.select').textContent`);
+    if (!context.includes('64K')) throw new Error(`the stored context length shows as ${context}`);
+    await shot('11-settings-ollama');
+  });
   await step('12-settings-search-and-close', async () => {
     await js(`(() => {
       const input = document.querySelector('.settings-nav input');

@@ -1072,7 +1072,13 @@ kbd {
   font-size: 17px;
   font-weight: 500;
 }
-.setting-row {
+.setting-intro {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.setting-row,
+.ollama-panel {
   display: flex;
   align-items: center;
   gap: 32px;
@@ -1080,6 +1086,13 @@ kbd {
 }
 .setting-row + .setting-row {
   border-top: 1px solid var(--line);
+}
+.ollama-panel {
+  margin: 6px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-md);
+  background: var(--sidebar);
 }
 .setting-text {
   flex: 1;
@@ -1094,6 +1107,11 @@ kbd {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.setting-pending {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--accent);
+}
 .setting-error {
   margin-top: 6px;
   font-size: 12px;
@@ -1103,6 +1121,10 @@ kbd {
   flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
+}
+.control-row {
+  display: flex;
+  gap: 8px;
 }
 
 .segmented {
@@ -1167,4 +1189,17 @@ kbd {
 a.button {
   color: inherit;
   text-decoration: none;
+}
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.button.danger {
+  border-color: var(--remove);
+  color: var(--remove);
+}
+.button.danger.strong,
+.button.danger:hover:not(:disabled) {
+  background: var(--remove);
+  color: var(--bg);
 }

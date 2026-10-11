@@ -5,7 +5,9 @@ import type { Settings } from '@shared/settings';
 import { AgentHost } from './host/agent-host';
 import { handle, send } from './ipc';
 import { OllamaClient, resolveBaseUrl } from './ollama/client';
+import { memoryEnvironment, windowsEnvironment } from './ollama/environment';
 import { OllamaMonitor } from './ollama/monitor';
+import { OllamaServer, windowsProcesses, type ProcessControl } from './ollama/server-settings';
 import { ProxyServer } from './proxy/server';
 import { SettingsStore } from './settings/store';
 import { prepareSmoke, runSmoke, smokeFolder } from './smoke';
@@ -24,8 +26,23 @@ if (smoke) prepareSmoke();
 
 const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'), applySettings);
 const ollama = new OllamaClient(ollamaAddress(settings.value));
-const monitor = new OllamaMonitor(ollama, (status) => send(win, 'ollama:status', status));
+let wasReachable = false;
+const monitor = new OllamaMonitor(ollama, (status) => {
+  // Ollama coming up, by whoever's hand, starts with the server settings stored at that moment
+  if (status.reachable && !wasReachable) void ollamaServer.noticeStarted();
+  wasReachable = status.reachable;
+  send(win, 'ollama:status', status);
+});
 const proxy = new ProxyServer(() => ollama.baseUrl);
+
+// the smoke test stores nothing in the user's environment and can never stop their Ollama
+const noProcesses: ProcessControl = { list: async () => [], kill: async () => {}, launch: () => {}, installedApp: () => null };
+const ollamaServer = new OllamaServer({
+  environment: smoke ? memoryEnvironment({ user: { OLLAMA_CONTEXT_LENGTH: '65536' } }) : process.platform === 'win32' ? windowsEnvironment : null,
+  processes: smoke ? noProcesses : process.platform === 'win32' ? windowsProcesses : null,
+  baseUrl: () => ollama.baseUrl,
+  reachable: () => ollama.version().then(() => true, () => false),
+});
 
 function ollamaAddress(value: Settings): string {
   return resolveBaseUrl(value.ollama.address || process.env.OLLAMA_HOST);
@@ -160,6 +177,17 @@ function registerHandlers(): void {
     }
   });
   handle('ollama:default-address', () => resolveBaseUrl(process.env.OLLAMA_HOST));
+  handle('ollama:server', () => ollamaServer.state());
+  handle('ollama:set-server', (changes) => ollamaServer.set(changes));
+  handle('ollama:restart', async () => {
+    send(win, 'ollama:restarting', true);
+    try {
+      await ollamaServer.restart();
+    } finally {
+      send(win, 'ollama:restarting', false);
+      void monitor.poll();
+    }
+  });
   handle('session:stored', () => sessions().stored());
   handle('session:create', (options) => sessions().create(options));
   handle('session:save-items', (id, items) => sessions().saveItems(id, items));

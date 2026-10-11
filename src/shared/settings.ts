@@ -1,4 +1,4 @@
-// wrontend's own settings, kept in one JSON file in its data folder
+// wrontend's own settings, kept in one JSON file in its data folder, and Ollama's server settings, which live elsewhere
 
 import { BACKGROUND_POLICIES, type BackgroundPolicy } from './proxy';
 
@@ -40,6 +40,30 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export type SettingsPatch = { [K in keyof Settings]?: Partial<Settings[K]> };
+
+// the server settings Ollama reads from its environment at start, so each needs a restart.
+// they are the user's environment variables, where Ollama's docs put them and where its tray app finds them too
+export const OLLAMA_SERVER_VARS = [
+  'OLLAMA_MODELS',
+  'OLLAMA_CONTEXT_LENGTH',
+  'OLLAMA_NUM_PARALLEL',
+  'OLLAMA_FLASH_ATTENTION',
+  'OLLAMA_KV_CACHE_TYPE',
+  'OLLAMA_KEEP_ALIVE',
+] as const;
+
+export type OllamaServerVar = (typeof OLLAMA_SERVER_VARS)[number];
+
+// null is unset: Ollama uses its own default
+export type OllamaServerValues = Record<OllamaServerVar, string | null>;
+
+export interface OllamaServerState {
+  // null when wrontend can store them and restart Ollama here; otherwise why not
+  unsupported: string | null;
+  values: OllamaServerValues;
+  // saved since Ollama last started, so not yet in effect
+  pending: OllamaServerVar[];
+}
 
 export interface AboutInfo {
   version: string;

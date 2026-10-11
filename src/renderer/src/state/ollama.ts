@@ -7,12 +7,15 @@ import { bridge } from '../bridge';
 interface OllamaState {
   status: OllamaStatus | null;
   models: ModelSummary[];
+  // wrontend is restarting Ollama: its being unreachable meanwhile is expected
+  restarting: boolean;
   refreshModels(): Promise<void>;
 }
 
 export const useOllama = create<OllamaState>((set) => ({
   status: null,
   models: [],
+  restarting: false,
   async refreshModels() {
     try {
       set({ models: await bridge.invoke('ollama:models') });
@@ -25,9 +28,14 @@ export const useOllama = create<OllamaState>((set) => ({
 export function startOllamaSync(): () => void {
   void bridge.invoke('ollama:status').then((status) => useOllama.setState({ status }));
   void useOllama.getState().refreshModels();
-  return bridge.on('ollama:status', (status) => {
+  const offRestarting = bridge.on('ollama:restarting', (restarting) => useOllama.setState({ restarting }));
+  const offStatus = bridge.on('ollama:status', (status) => {
     const wasReachable = useOllama.getState().status?.reachable;
     useOllama.setState({ status });
     if (status.reachable && !wasReachable) void useOllama.getState().refreshModels();
   });
+  return () => {
+    offRestarting();
+    offStatus();
+  };
 }

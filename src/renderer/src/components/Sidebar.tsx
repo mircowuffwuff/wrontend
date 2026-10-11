@@ -10,11 +10,16 @@ function gb(bytes: number): string {
 
 function OllamaStatusRow() {
   const status = useOllama((s) => s.status);
+  const restarting = useOllama((s) => s.restarting);
   const loaded = status?.loaded[0];
   let colour = 'var(--line)';
   let headline = 'Looking for Ollama…';
   let detail = '';
-  if (status && !status.reachable) {
+  if (restarting) {
+    colour = 'var(--mustard)';
+    headline = 'Restarting Ollama…';
+    detail = status?.baseUrl ?? '';
+  } else if (status && !status.reachable) {
     colour = 'var(--remove)';
     headline = 'Ollama is not running';
     detail = status.baseUrl;

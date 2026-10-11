@@ -3,7 +3,7 @@
 import type { ModelDetails, ModelSummary, OllamaStatus } from './ollama';
 import type { Effort } from './proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
-import type { AboutInfo, Settings, SettingsPatch } from './settings';
+import type { AboutInfo, OllamaServerState, OllamaServerValues, Settings, SettingsPatch } from './settings';
 
 export interface InvokeMap {
   'window:minimize': { args: []; result: void };
@@ -19,6 +19,9 @@ export interface InvokeMap {
   'ollama:show': { args: [name: string]; result: ModelDetails | null };
   // the address wrontend uses when Settings names none
   'ollama:default-address': { args: []; result: string };
+  'ollama:server': { args: []; result: OllamaServerState };
+  'ollama:set-server': { args: [changes: Partial<OllamaServerValues>]; result: OllamaServerState };
+  'ollama:restart': { args: []; result: void };
   'session:stored': { args: []; result: StoredSession[] };
   'session:create': { args: [options: CreateSessionOptions]; result: CreatedSession };
   'session:save-items': { args: [id: string, items: unknown[]]; result: void };
@@ -33,6 +36,7 @@ export interface InvokeMap {
 
 export interface EventMap {
   'ollama:status': OllamaStatus;
+  'ollama:restarting': boolean;
   'settings:changed': Settings;
   'session:event': SessionEvent;
 }

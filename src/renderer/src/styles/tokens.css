@@ -29,8 +29,23 @@
   --top-bar: 44px;
   --sidebar-width: 272px;
   --transcript-width: 760px;
+  --transcript-text: 14px;
 
   color-scheme: dark;
+}
+
+/* the reader's choices from Settings, set on the root by the renderer */
+:root[data-width='narrow'] {
+  --transcript-width: 640px;
+}
+:root[data-width='wide'] {
+  --transcript-width: 980px;
+}
+:root[data-text-size='small'] {
+  --transcript-text: 13px;
+}
+:root[data-text-size='large'] {
+  --transcript-text: 16px;
 }
 
 @media (prefers-color-scheme: light) {

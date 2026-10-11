@@ -1,11 +1,13 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
+import type { Settings } from '@shared/settings';
 import { AgentHost } from './host/agent-host';
 import { handle, send } from './ipc';
 import { OllamaClient, resolveBaseUrl } from './ollama/client';
 import { OllamaMonitor } from './ollama/monitor';
 import { ProxyServer } from './proxy/server';
+import { SettingsStore } from './settings/store';
 import { prepareSmoke, runSmoke, smokeFolder } from './smoke';
 
 // the window's own colours before the renderer has painted, and behind the native window buttons
@@ -16,12 +18,30 @@ const CHROME = {
 const TOP_BAR_HEIGHT = 44;
 
 let win: BrowserWindow | null = null;
-const ollama = new OllamaClient(resolveBaseUrl(process.env.OLLAMA_HOST));
-const monitor = new OllamaMonitor(ollama, (status) => send(win, 'ollama:status', status));
-const proxy = new ProxyServer(() => ollama.baseUrl);
 let host: AgentHost | null = null;
 const smoke = smokeFolder();
 if (smoke) prepareSmoke();
+
+const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'), applySettings);
+const ollama = new OllamaClient(ollamaAddress(settings.value));
+const monitor = new OllamaMonitor(ollama, (status) => send(win, 'ollama:status', status));
+const proxy = new ProxyServer(() => ollama.baseUrl);
+
+function ollamaAddress(value: Settings): string {
+  return resolveBaseUrl(value.ollama.address || process.env.OLLAMA_HOST);
+}
+
+function applySettings(value: Settings): void {
+  // the renderer's prefers-color-scheme follows this too, and so do the native window buttons
+  nativeTheme.themeSource = value.appearance.theme;
+  host?.setBackgroundPolicy(value.proxy.backgroundPolicy);
+  const address = ollamaAddress(value);
+  if (address !== ollama.baseUrl) {
+    ollama.baseUrl = address;
+    void monitor.poll();
+  }
+  send(win, 'settings:changed', value);
+}
 
 function chrome() {
   return nativeTheme.shouldUseDarkColors ? CHROME.dark : CHROME.light;
@@ -106,6 +126,30 @@ function registerHandlers(): void {
     const harness = process.env.WRONTEND_HARNESS ?? 'claude-code';
     return folder && model && text.length ? { harness, folder, model, text: text.join('|') } : null;
   });
+  handle('app:about', () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    dataFolder: app.getPath('userData'),
+    sessions: host?.stored().length ?? 0,
+  }));
+  handle('app:open-data-folder', async () => {
+    await shell.openPath(app.getPath('userData'));
+  });
+  handle('settings:get', () => settings.value);
+  handle('settings:set', (patch) => {
+    // an address that does not parse is refused here, before it is stored
+    const address = patch.ollama?.address;
+    if (address) {
+      try {
+        resolveBaseUrl(address);
+      } catch {
+        throw new Error(`“${address}” is not an address Ollama could be reached at.`);
+      }
+    }
+    return settings.update(patch);
+  });
   handle('ollama:status', () => monitor.status);
   handle('ollama:models', () => ollama.models());
   handle('ollama:show', async (name) => {
@@ -115,6 +159,7 @@ function registerHandlers(): void {
       return null;
     }
   });
+  handle('ollama:default-address', () => resolveBaseUrl(process.env.OLLAMA_HOST));
   handle('session:stored', () => sessions().stored());
   handle('session:create', (options) => sessions().create(options));
   handle('session:save-items', (id, items) => sessions().saveItems(id, items));
@@ -143,7 +188,8 @@ nativeTheme.on('updated', () => {
 app.whenReady().then(async () => {
   registerHandlers();
   await proxy.start();
-  host = new AgentHost(proxy, app.getPath('userData'), (event) => send(win, 'session:event', event));
+  nativeTheme.themeSource = settings.value.appearance.theme;
+  host = new AgentHost(proxy, app.getPath('userData'), (event) => send(win, 'session:event', event), settings.value.proxy.backgroundPolicy);
   monitor.start();
   createWindow();
   app.on('activate', () => {

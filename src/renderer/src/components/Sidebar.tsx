@@ -1,5 +1,6 @@
 import { useOllama } from '../state/ollama';
 import { useSessions } from '../state/sessions';
+import { useSettings } from '../state/settings';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
 
@@ -38,7 +39,7 @@ function OllamaStatusRow() {
           </div>
         )}
       </div>
-      <button className="icon-button" aria-label="Settings" title="Settings">
+      <button className="icon-button" aria-label="Settings" title="Settings" onClick={() => useSettings.getState().open()}>
         <Icon name="settings" />
       </button>
     </div>

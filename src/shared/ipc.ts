@@ -3,15 +3,22 @@
 import type { ModelDetails, ModelSummary, OllamaStatus } from './ollama';
 import type { Effort } from './proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
+import type { AboutInfo, Settings, SettingsPatch } from './settings';
 
 export interface InvokeMap {
   'window:minimize': { args: []; result: void };
   'window:toggle-maximize': { args: []; result: void };
   'dialog:pick-folder': { args: []; result: string | null };
   'app:autoprompt': { args: []; result: { harness: string; folder: string; model: string; text: string } | null };
+  'app:about': { args: []; result: AboutInfo };
+  'app:open-data-folder': { args: []; result: void };
+  'settings:get': { args: []; result: Settings };
+  'settings:set': { args: [patch: SettingsPatch]; result: Settings };
   'ollama:status': { args: []; result: OllamaStatus };
   'ollama:models': { args: []; result: ModelSummary[] };
   'ollama:show': { args: [name: string]; result: ModelDetails | null };
+  // the address wrontend uses when Settings names none
+  'ollama:default-address': { args: []; result: string };
   'session:stored': { args: []; result: StoredSession[] };
   'session:create': { args: [options: CreateSessionOptions]; result: CreatedSession };
   'session:save-items': { args: [id: string, items: unknown[]]; result: void };
@@ -26,6 +33,7 @@ export interface InvokeMap {
 
 export interface EventMap {
   'ollama:status': OllamaStatus;
+  'settings:changed': Settings;
   'session:event': SessionEvent;
 }
 

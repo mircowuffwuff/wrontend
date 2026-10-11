@@ -184,6 +184,38 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     if (left !== 0) throw new Error(`${left} sessions are still stored after deleting the only one`);
     await shot('09-new-session-screen');
   });
+  // clicks a control in the Settings dialog by its row's label and the control's text or title
+  const settingsClick = (label: string, control: string) =>
+    js(`(() => {
+      const row = [...document.querySelectorAll('.setting-row')].find((r) => r.querySelector('.setting-label')?.textContent === ${JSON.stringify(label)});
+      const button = [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === ${JSON.stringify(control)} || b.title === ${JSON.stringify(control)});
+      button.click();
+    })()`);
+  await step('10-settings-general', async () => {
+    await js(`document.querySelector('.status button[aria-label="Settings"]').click()`);
+    await waitFor(`document.querySelector('.settings .setting-row')`);
+    await settingsClick('Transcript width', 'Wide');
+    await waitFor(`document.documentElement.dataset.width === 'wide'`);
+    const stored = await js<string>(`window.wrontend.invoke('settings:get').then((s) => s.appearance.width)`);
+    if (stored !== 'wide') throw new Error(`the width was not stored: ${stored}`);
+    await shot('10-settings-general');
+    await settingsClick('Theme', 'Light');
+    await new Promise((r) => setTimeout(r, 400));
+    if (nativeTheme.themeSource !== 'light') throw new Error(`the theme source is ${nativeTheme.themeSource}`);
+    await shot('10-settings-light');
+    await settingsClick('Theme', 'System');
+  });
+  await step('12-settings-search-and-close', async () => {
+    await js(`(() => {
+      const input = document.querySelector('.settings-nav input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'ollama');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await waitFor(`[...document.querySelectorAll('.setting-group h2')].some((h) => h.textContent.startsWith('Ollama'))`);
+    await shot('12-settings-search');
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await waitFor(`!document.querySelector('.settings')`);
+  });
 
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, consoleErrors }, null, 2));

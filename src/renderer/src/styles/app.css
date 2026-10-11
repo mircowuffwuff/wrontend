@@ -433,6 +433,7 @@ button.chip:hover {
   flex-direction: column;
   gap: 14px;
   padding: 24px 0 32px;
+  font-size: var(--transcript-text);
   user-select: text;
 }
 
@@ -804,6 +805,13 @@ kbd {
     animation: none !important;
   }
 }
+/* Motion: Reduced in Settings, whatever the system says */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
 
 /* a tool's input as fields */
 
@@ -986,4 +994,177 @@ kbd {
 }
 .user-message .markdown p {
   white-space: pre-wrap;
+}
+
+/* the Settings dialog: over the dimmed app, below the top bar so the window still moves by it */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: start center;
+  padding: calc(var(--top-bar) + 8px) 40px 16px;
+  background: rgb(0 0 0 / 0.38);
+}
+.settings {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  width: min(1180px, 100%);
+  height: min(880px, 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-lg);
+  background: var(--bg);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.36);
+  overflow: hidden;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 4px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.settings-nav .search {
+  margin: 0 12px 10px;
+}
+.settings-area {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 18px;
+}
+.settings-area-label {
+  padding: 8px 20px 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.settings-nav .nav-item svg {
+  color: var(--muted);
+}
+.settings-nav .nav-item.active svg {
+  color: var(--text);
+}
+.settings-content {
+  position: relative;
+  padding: 28px 48px 48px 40px;
+  overflow-y: auto;
+  user-select: text;
+}
+/* a thin bar without arrows stays clear of the dialog's rounded corner */
+.settings-nav,
+.settings-content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.settings-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+.setting-group + .setting-group {
+  margin-top: 36px;
+}
+.setting-group h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 16px 0;
+}
+.setting-row + .setting-row {
+  border-top: 1px solid var(--line);
+}
+.setting-text {
+  flex: 1;
+  min-width: 0;
+}
+.setting-description {
+  font-size: 13px;
+  color: var(--muted);
+}
+.setting-path {
+  margin-top: 4px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.setting-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--remove);
+}
+.setting-control {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--leaf-sm);
+  background: var(--raised);
+}
+.segmented button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 36px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--leaf-sm);
+  color: var(--muted);
+}
+.segmented button:hover {
+  color: var(--text);
+}
+.segmented button.on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+}
+
+.setting-control .picker {
+  height: 34px;
+  padding: 0 10px 0 12px;
+  max-width: 320px;
+  border: 1px solid var(--line);
+  background: var(--field);
+}
+.select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.select svg {
+  color: var(--muted);
+}
+
+.text-field input {
+  width: 260px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-sm);
+  background: var(--field);
+  color: var(--text);
+  font-size: 13px;
+  outline: 0;
+}
+.text-field input:focus {
+  border-color: var(--accent);
+}
+.text-field input::placeholder {
+  color: var(--muted);
+}
+
+a.button {
+  color: inherit;
+  text-decoration: none;
 }

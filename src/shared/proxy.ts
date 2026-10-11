@@ -8,7 +8,8 @@ export type Effort = 'off' | 'on';
 
 // what happens to a harness's side requests. 'local-titles' answers only title requests itself -- wrontend titles sessions on its own,
 // and with one Ollama slot a title request can push the conversation out of the cache -- and passes the rest to the model
-export type BackgroundPolicy = 'pass' | 'local-titles' | 'local' | 'refuse';
+export const BACKGROUND_POLICIES = ['pass', 'local-titles', 'local', 'refuse'] as const;
+export type BackgroundPolicy = (typeof BACKGROUND_POLICIES)[number];
 
 export interface RouteSettings {
   model: string;

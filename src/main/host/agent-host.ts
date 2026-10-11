@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Effort } from '@shared/proxy';
+import type { BackgroundPolicy, Effort } from '@shared/proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, SessionInfo, SessionModes, StoredSession } from '@shared/session';
 import type { ProxyServer } from '../proxy/server';
 import { PROFILES } from './profiles';
@@ -31,6 +31,7 @@ export class AgentHost {
     // wrontend's own data folder: sessions are stored under it, and each harness keeps its config there
     dataDir: string,
     private readonly emit: (event: SessionEvent) => void,
+    private backgroundPolicy: BackgroundPolicy = 'local-titles',
   ) {
     // full long-form paths: a Windows 8.3 short path such as C:\Users\ABCDEF~1 makes Node's file watcher in the harness abort
     this.dataDir = realpathSync.native(dataDir);
@@ -100,6 +101,12 @@ export class AgentHost {
     this.persist(entry);
   }
 
+  // applies to every running session from its next request on
+  setBackgroundPolicy(policy: BackgroundPolicy): void {
+    this.backgroundPolicy = policy;
+    for (const entry of this.sessions.values()) entry.agent?.updateRoute({ backgroundPolicy: policy });
+  }
+
   // a dormant session is woken for this: modes belong to the running harness
   async setMode(id: string, modeId: string): Promise<void> {
     const entry = this.get(id);
@@ -146,7 +153,7 @@ export class AgentHost {
     const { info } = entry;
     const profile = PROFILES[info.harness];
     if (!profile) throw new Error(`no harness called ${info.harness}`);
-    const route = this.proxy.register({ model: info.model, effort: info.effort, backgroundPolicy: 'local-titles' }, (stats) =>
+    const route = this.proxy.register({ model: info.model, effort: info.effort, backgroundPolicy: this.backgroundPolicy }, (stats) =>
       this.emit({ sessionId: info.id, type: 'stats', stats }),
     );
     const agent = new AgentSession({

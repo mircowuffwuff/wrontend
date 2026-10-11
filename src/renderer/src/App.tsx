@@ -4,13 +4,16 @@ import { Composer } from './components/Composer';
 import { Icon } from './components/Icon';
 import { Leaf } from './components/Leaf';
 import { Menu } from './components/Menu';
+import { SettingsDialog } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
 import { useDraft } from './state/draft';
 import { startOllamaSync } from './state/ollama';
 import { startSessionSync, useSessions } from './state/sessions';
+import { startSettingsSync, useSettings } from './state/settings';
 
 export function App() {
+  useEffect(() => startSettingsSync(), []);
   useEffect(() => startOllamaSync(), []);
   useEffect(() => startSessionSync(), []);
   useEffect(() => {
@@ -21,6 +24,7 @@ export function App() {
     });
   }, []);
   const session = useSessions((s) => (s.activeId ? s.sessions[s.activeId] : null));
+  const settingsOpen = useSettings((s) => s.section !== null);
 
   return (
     <div className="app">
@@ -65,6 +69,7 @@ export function App() {
         )}
         <Composer session={session} />
       </main>
+      {settingsOpen && <SettingsDialog />}
     </div>
   );
 }

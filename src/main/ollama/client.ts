@@ -18,7 +18,8 @@ export function resolveBaseUrl(host: string | undefined): string {
 }
 
 export class OllamaClient {
-  constructor(readonly baseUrl: string, private readonly timeoutMs = 3000) {}
+  // the address follows Settings, so it changes under a running client
+  constructor(public baseUrl: string, private readonly timeoutMs = 3000) {}
 
   private async get<T>(path: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, { signal: AbortSignal.timeout(this.timeoutMs) });

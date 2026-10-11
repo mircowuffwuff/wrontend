@@ -36,4 +36,6 @@ export interface Shape {
   error(status: number, message: string): LocalReply;
   // a canned reply for a background request the policy answers without the model
   local(body: Json): LocalReply;
+  // whether a request only asks for a session title
+  isTitle(body: Json): boolean;
 }

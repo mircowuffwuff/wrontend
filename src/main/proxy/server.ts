@@ -108,11 +108,10 @@ export class ProxyServer {
       error: null,
     };
 
-    if (kind === 'background' && route.settings.backgroundPolicy !== 'pass') {
-      const reply =
-        route.settings.backgroundPolicy === 'local'
-          ? shape.local(rewritten)
-          : shape.error(400, 'background requests are turned off in wrontend');
+    const policy = route.settings.backgroundPolicy;
+    const answerHere = kind === 'background' && (policy === 'local' || policy === 'refuse' || (policy === 'local-titles' && shape.isTitle(parsed)));
+    if (answerHere) {
+      const reply = policy === 'refuse' ? shape.error(400, 'background requests are turned off in wrontend') : shape.local(rewritten);
       res.writeHead(reply.status, { 'content-type': reply.contentType }).end(reply.payload);
       route.onStats({ ...stats, status: reply.status });
       return;

@@ -86,4 +86,5 @@ function error(status: number, message: string): LocalReply {
   return { status, contentType: 'application/json', payload: JSON.stringify({ error: { message, type: 'api_error' } }) };
 }
 
-export const openai: Shape = { rewrite, meter: () => new OpenAiMeter(), error, local };
+// no harness speaking this shape is known to send title requests yet
+export const openai: Shape = { rewrite, meter: () => new OpenAiMeter(), error, local, isTitle: () => false };

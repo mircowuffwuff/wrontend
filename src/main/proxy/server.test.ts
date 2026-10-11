@@ -123,6 +123,17 @@ describe('ProxyServer', () => {
     expect(stats[0]).toMatchObject({ kind: 'background', status: 200 });
   });
 
+  it('answers only title requests locally under local-titles, and passes other background requests on', async () => {
+    const route = proxy.register({ ...settings, backgroundPolicy: 'local-titles' }, (s) => stats.push(s));
+    const title = { ...request, model: BACKGROUND_MODEL, stream: false, system: [{ type: 'text', text: 'You are a Claude agent. You are naming a coding session.' }] };
+    const reply = (await (await fetch(`${route.baseUrl}/v1/messages`, { method: 'POST', body: JSON.stringify(title) })).json() as any);
+    expect(reply.content[0].text).toBe('New session');
+    expect(seen).toHaveLength(0);
+    await (await fetch(`${route.baseUrl}/v1/messages`, { method: 'POST', body: JSON.stringify({ ...request, model: BACKGROUND_MODEL }) })).text();
+    expect(seen).toHaveLength(1);
+    expect(JSON.parse(seen[0].body).model).toBe(settings.model);
+  });
+
   it('refuses a background request when the policy says so', async () => {
     const route = proxy.register({ ...settings, backgroundPolicy: 'refuse' }, (s) => stats.push(s));
     const res = await fetch(`${route.baseUrl}/v1/messages`, { method: 'POST', body: JSON.stringify({ ...request, model: BACKGROUND_MODEL }) });

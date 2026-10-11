@@ -26,7 +26,7 @@ export class AgentHost {
     const folder = realpathSync.native(options.folder);
     const dataDir = realpathSync.native(this.dataDir);
     const id = randomUUID();
-    const route = this.proxy.register({ model: options.model, effort: options.effort, backgroundPolicy: 'pass' }, (stats) =>
+    const route = this.proxy.register({ model: options.model, effort: options.effort, backgroundPolicy: 'local-titles' }, (stats) =>
       this.emit({ sessionId: id, type: 'stats', stats }),
     );
     const agent = new AgentSession({

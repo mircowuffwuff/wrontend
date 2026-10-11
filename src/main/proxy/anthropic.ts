@@ -108,4 +108,10 @@ function error(status: number, message: string): LocalReply {
   return { status, contentType: 'application/json', payload: JSON.stringify({ type: 'error', error: { type, message } }) };
 }
 
-export const anthropic: Shape = { rewrite, meter: () => new AnthropicMeter(), error, local };
+// Claude Code's title request opens its system prompt with "You are naming"; nothing else it sends does
+function isTitle(body: Json): boolean {
+  const system = Array.isArray(body.system) ? body.system.map((b: Json) => String(b?.text ?? '')).join(' ') : String(body.system ?? '');
+  return /You are naming/.test(system);
+}
+
+export const anthropic: Shape = { rewrite, meter: () => new AnthropicMeter(), error, local, isTitle };

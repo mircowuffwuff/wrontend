@@ -109,6 +109,33 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await js(`document.querySelector('.error-block .tool-summary')?.click()`);
     await shot('06-error-shown');
   });
+  await step('07-quote-reply', async () => {
+    // select the start of the assistant's answer, as a drag with the mouse would
+    await js(`(() => {
+      const p = document.querySelector('.transcript > .markdown p');
+      const range = document.createRange();
+      range.setStart(p.firstChild, 0);
+      range.setEnd(p.firstChild, Math.min(30, p.firstChild.length));
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    })()`);
+    await waitFor(`document.querySelector('.quote-popover input')`);
+    await shot('07-quote-popover');
+    await js(`(() => {
+      const input = document.querySelector('.quote-popover input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'this reads well');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })()`);
+    await waitFor(`document.querySelector('.quote-card') && !document.querySelector('.quote-popover')`);
+    await shot('07-quote-card');
+    await type('echo it back');
+    await waitFor(`!document.querySelector('.quote-card') && [...document.querySelectorAll('.user-message blockquote')].length > 0`);
+    await waitFor(`[...document.querySelectorAll('.transcript > .markdown')].some((m) => m.textContent.includes('quoted 1 line'))`);
+    await shot('07-quote-sent');
+  });
   await step('07-mode-picker', async () => {
     const picker = `[...document.querySelectorAll('.under-row .picker')].find((b) => b.textContent.trim() === 'Default')`;
     await waitFor(`${picker}?.tagName === 'BUTTON'`);

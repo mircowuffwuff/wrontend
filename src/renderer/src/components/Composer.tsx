@@ -4,11 +4,15 @@ import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge';
 import { useDraft } from '../state/draft';
 import { useOllama } from '../state/ollama';
+import { composeMessage, useQuotes, type QuoteCard } from '../state/quotes';
 import { useSessions, type SessionView } from '../state/sessions';
 import { Icon } from './Icon';
 import { ContextLeaves } from './Leaf';
 import { Menu } from './Menu';
 import { PermissionPrompt } from './Permission';
+
+// one shared empty list: a selector that returns a new array each time makes zustand re-render without end
+const NO_CARDS: QuoteCard[] = [];
 
 function gb(bytes: number): string {
   return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -23,6 +27,8 @@ export function Composer({ session }: { session: SessionView | null }) {
   const { createAndPrompt, prompt, cancel, answer, setModel, setEffort, setMode, creating } = useSessions();
 
   const fresh = session === null;
+  const cards = useQuotes((s) => (session ? (s.cards[session.info.id] ?? NO_CARDS) : NO_CARDS));
+  const { remove: removeCard, clear: clearCards } = useQuotes();
   const model = fresh ? draft.model : session.info.model;
   const effort = fresh ? draft.effort : session.info.effort;
   const running = !!session?.running || creating;
@@ -39,14 +45,17 @@ export function Composer({ session }: { session: SessionView | null }) {
 
   useEffect(() => area.current?.focus(), [session?.info.id]);
 
-  const canSend = text.trim().length > 0 && !!model && (!fresh || !!draft.folder) && !running;
+  const canSend = (text.trim().length > 0 || cards.length > 0) && !!model && (!fresh || !!draft.folder) && !running;
 
   const send = () => {
     if (!canSend || !model) return;
-    const value = text;
+    const value = composeMessage(cards, text);
     setText('');
     if (fresh) void createAndPrompt({ harness: 'claude-code', folder: draft.folder!, model, effort }, value);
-    else void prompt(session.info.id, value);
+    else {
+      clearCards(session.info.id);
+      void prompt(session.info.id, value);
+    }
   };
 
   const pickFolder = async () => {
@@ -85,6 +94,25 @@ export function Composer({ session }: { session: SessionView | null }) {
           />
         )}
         <div className="prompt-box">
+          {cards.length > 0 && session && (
+            <div className="quote-cards">
+              {cards.map((c) => (
+                <div key={c.id} className="quote-card" title={c.reply ? `${c.quote}
+
+${c.reply}` : c.quote}>
+                  <div className="quote-card-quote">{c.quote}</div>
+                  {c.reply && <div className="quote-card-reply">{c.reply}</div>}
+                  <div className="quote-card-foot">
+                    <span>Reply</span>
+                    <button className="icon-button small" aria-label="Remove this reply" onClick={() => removeCard(session.info.id, c.id)}>
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="prompt-row">
           <textarea
             ref={area}
             rows={1}
@@ -107,6 +135,7 @@ export function Composer({ session }: { session: SessionView | null }) {
               <Icon name="send" size={16} />
             </button>
           )}
+          </div>
         </div>
         <div className="under-row">
           <button className="icon-button" aria-label="Attach">

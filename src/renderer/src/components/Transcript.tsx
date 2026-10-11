@@ -6,6 +6,7 @@ import { group, type TranscriptItem } from '../state/transcript';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
 import { Markdown } from './Markdown';
+import { QuotePopover } from './QuotePopover';
 import { ToolGroup } from './Tools';
 
 function duration(ms: number): string {
@@ -90,7 +91,7 @@ export function Transcript({ session }: { session: SessionView }) {
             case 'user':
               return (
                 <div key={item.id} className="user-message">
-                  {item.text}
+                  <Markdown text={item.text} />
                 </div>
               );
             case 'assistant':
@@ -125,6 +126,7 @@ export function Transcript({ session }: { session: SessionView }) {
           </div>
         )}
       </div>
+      <QuotePopover sessionId={session.info.id} container={scroller} />
       {!atBottom && (
         <button
           className="to-bottom"

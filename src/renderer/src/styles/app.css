@@ -863,3 +863,127 @@ kbd {
   align-items: center;
   gap: 6px;
 }
+
+/* quote replies */
+
+.prompt-box {
+  flex-direction: column;
+  align-items: stretch;
+}
+.prompt-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.user-message .markdown blockquote {
+  margin: 0 0 8px;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--muted);
+  color: var(--muted);
+}
+
+.quote-popover {
+  position: fixed;
+  z-index: 30;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-md);
+  background: var(--sidebar);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.28);
+  user-select: none;
+}
+.quote-text {
+  max-height: 3.2em;
+  overflow: hidden;
+  padding-left: 10px;
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.quote-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.quote-input input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-sm);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+}
+.quote-input input:focus {
+  border-color: var(--muted);
+}
+
+.quote-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.quote-card {
+  display: flex;
+  flex-direction: column;
+  width: 170px;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-md);
+  background: var(--bg);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.quote-card-quote {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding-left: 8px;
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+}
+.quote-card-reply {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.quote-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 6px;
+  color: var(--muted);
+}
+.icon-button.small {
+  width: 22px;
+  height: 22px;
+}
+
+/* a user message is markdown too, but sits in a bubble: paragraphs and quotes close up */
+.user-message .markdown p {
+  margin: 0 0 8px;
+}
+.user-message .markdown blockquote p {
+  margin: 0;
+}
+.user-message .markdown > :last-child,
+.user-message .markdown blockquote:last-child {
+  margin-bottom: 0;
+}
+.user-message .markdown {
+  white-space: normal;
+}
+.user-message .markdown p {
+  white-space: pre-wrap;
+}

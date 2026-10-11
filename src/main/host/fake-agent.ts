@@ -1,5 +1,6 @@
 // a scripted ACP agent for testing the app without a model: thinking, a plan, markdown, a read, an edit that needs permission.
-// a prompt containing "slow" streams thinking until it is cancelled; one containing "fail" ends the turn with an error
+// a prompt containing "slow" streams thinking until it is cancelled, one containing "fail" ends the turn with an error,
+// and one containing "echo" answers with how many quoted lines it carried
 
 import { Readable, Writable } from 'node:stream';
 import { agent, ndJsonStream, PROTOCOL_VERSION, RequestError, type AgentContext, type SessionUpdate } from '@agentclientprotocol/sdk';
@@ -61,6 +62,12 @@ const app = agent({ name: 'wrontend-fake-agent' })
     if (text.includes('fail')) {
       await stream(client, sessionId, 'agent_thought_chunk', 'this one is meant to go wrong.');
       throw RequestError.internalError(undefined, 'the fake agent failed on purpose');
+    }
+
+    if (text.includes('echo')) {
+      const quoted = text.split('\n').filter((l) => l.startsWith('>')).length;
+      await stream(client, sessionId, 'agent_message_chunk', `Got it: your message quoted ${quoted} line${quoted === 1 ? '' : 's'}.`);
+      return { stopReason: 'end_turn' };
     }
 
     if (text.includes('slow')) {

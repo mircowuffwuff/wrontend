@@ -77,6 +77,38 @@ export class OllamaClient {
     await this.post('/api/create', { ...request, stream: false }, 120_000);
   }
 
+  // downloads a model, reporting each line of Ollama's progress. an aborted pull stops the download; Ollama keeps what it has
+  // and the next pull of the same model goes on from there
+  async pull(name: string, onProgress: (progress: PullProgress) => void, signal?: AbortSignal): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/api/pull`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: name, stream: true }),
+      signal,
+    });
+    if (!res.ok || !res.body) throw new Error((await errorOf(res)) ?? `/api/pull answered ${res.status}`);
+    const decoder = new TextDecoder();
+    let buffered = '';
+    let done = false;
+    const take = (line: string) => {
+      if (!line.trim()) return;
+      const progress = JSON.parse(line) as PullProgress & { error?: string };
+      if (progress.error) throw new Error(progress.error);
+      if (progress.status === 'success') done = true;
+      onProgress(progress);
+    };
+    for await (const chunk of res.body) {
+      buffered += decoder.decode(chunk, { stream: true });
+      let newline: number;
+      while ((newline = buffered.indexOf('\n')) >= 0) {
+        take(buffered.slice(0, newline));
+        buffered = buffered.slice(newline + 1);
+      }
+    }
+    take(buffered + decoder.decode());
+    if (!done) throw new Error('Ollama ended the download before it was complete');
+  }
+
   // removes the model's manifest; Ollama removes a blob once no other model uses it
   async delete(name: string): Promise<void> {
     await this.post('/api/delete', { model: name }, 30_000, 'DELETE');
@@ -86,6 +118,14 @@ export class OllamaClient {
   async unload(name: string): Promise<void> {
     await this.post('/api/generate', { model: name, keep_alive: 0, stream: false }, 30_000);
   }
+}
+
+// one line of /api/pull: a layer being downloaded carries its digest, its size and how much of it has arrived
+export interface PullProgress {
+  status: string;
+  digest?: string;
+  total?: number;
+  completed?: number;
 }
 
 export interface CreateRequest {

@@ -1,5 +1,47 @@
-import { describe, expect, it } from 'vitest';
-import { parseShow, resolveBaseUrl } from './client';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { afterEach, describe, expect, it } from 'vitest';
+import { OllamaClient, parseShow, resolveBaseUrl, type PullProgress } from './client';
+
+describe('pull', () => {
+  let server: Server | null = null;
+  afterEach(() => server?.close());
+
+  // an Ollama that answers /api/pull with these chunks, cut wherever the test cuts them
+  async function ollamaSending(chunks: string[]): Promise<OllamaClient> {
+    server = createServer(async (_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      for (const chunk of chunks) {
+        res.write(chunk);
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      res.end();
+    });
+    await new Promise<void>((r) => server!.listen(0, '127.0.0.1', r));
+    return new OllamaClient(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+  }
+
+  it('reads progress lines split across chunks', async () => {
+    const client = await ollamaSending([
+      '{"status":"pulling manifest"}\n{"status":"pulling d8',
+      '47","digest":"sha256:d847","total":100,"completed":40}\n',
+      '{"status":"pulling d847","digest":"sha256:d847","total":100,"completed":100}\n{"status":"success"}',
+    ]);
+    const seen: PullProgress[] = [];
+    await client.pull('m:q4', (p) => seen.push(p));
+    expect(seen.map((p) => p.completed ?? p.status)).toEqual(['pulling manifest', 40, 100, 'success']);
+  });
+
+  it('fails with the error Ollama writes into the stream', async () => {
+    const client = await ollamaSending(['{"status":"pulling manifest"}\n', '{"error":"pull model manifest: file does not exist"}\n']);
+    await expect(client.pull('m:q4', () => {})).rejects.toThrow('pull model manifest: file does not exist');
+  });
+
+  it('fails when the stream ends before success', async () => {
+    const client = await ollamaSending(['{"status":"pulling d847","digest":"sha256:d847","total":100,"completed":40}\n']);
+    await expect(client.pull('m:q4', () => {})).rejects.toThrow('before it was complete');
+  });
+});
 
 describe('resolveBaseUrl', () => {
   it.each([

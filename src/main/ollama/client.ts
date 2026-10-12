@@ -27,14 +27,14 @@ export class OllamaClient {
     return (await res.json()) as T;
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  private async post<T>(path: string, body: unknown, timeoutMs = this.timeoutMs): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) throw new Error(`${path} answered ${res.status}`);
+    if (!res.ok) throw new Error((await errorOf(res)) ?? `${path} answered ${res.status}`);
     return (await res.json()) as T;
   }
 
@@ -46,6 +46,7 @@ export class OllamaClient {
     const { models } = await this.get<{ models: TagsModel[] }>('/api/tags');
     return models.map((m) => ({
       name: m.name,
+      digest: m.digest,
       sizeBytes: m.size,
       family: m.details?.family ?? null,
       parameterSize: m.details?.parameter_size ?? null,
@@ -67,6 +68,28 @@ export class OllamaClient {
     const s = await this.post<ShowResponse>('/api/show', { model: name });
     return parseShow(name, s);
   }
+
+  // a model made from another one already in Ollama: new settings over the same weights, so nothing is downloaded and only a
+  // manifest and a small layer are written. it takes seconds, longer than a read
+  async create(request: CreateRequest): Promise<void> {
+    await this.post('/api/create', { ...request, stream: false }, 120_000);
+  }
+}
+
+export interface CreateRequest {
+  model: string;
+  from: string;
+  renderer?: string;
+  parser?: string;
+}
+
+async function errorOf(res: Response): Promise<string | null> {
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    return typeof body.error === 'string' ? body.error : null;
+  } catch {
+    return null;
+  }
 }
 
 // /api/show has no renderer field -- a renderer shows only as a RENDERER line in the generated Modelfile
@@ -74,16 +97,27 @@ export function parseShow(name: string, s: ShowResponse): ModelDetails {
   const info = s.model_info ?? {};
   const contextKey = Object.keys(info).find((k) => k.endsWith('.context_length'));
   const context = contextKey ? info[contextKey] : null;
+  const text = (key: string) => (typeof info[key] === 'string' && info[key] ? (info[key] as string) : null);
   return {
     name,
     capabilities: s.capabilities ?? [],
     hasRenderer: /^RENDERER\s+\S+/m.test(s.modelfile ?? ''),
     contextLength: typeof context === 'number' ? context : null,
+    architecture: text('general.architecture'),
+    baseModel: repoId(text('general.base_model.0.repo_url')),
+    basename: text('general.basename'),
   };
+}
+
+// https://huggingface.co/Qwen/Qwen3.8-27B -> Qwen/Qwen3.8-27B; a URL anywhere else names no repo wrontend can match
+function repoId(url: string | null): string | null {
+  const match = url ? /^https:\/\/huggingface\.co\/([^/]+\/[^/?#]+)\/?$/.exec(url) : null;
+  return match ? match[1] : null;
 }
 
 interface TagsModel {
   name: string;
+  digest: string;
   size: number;
   details?: { family?: string; parameter_size?: string; quantization_level?: string };
 }

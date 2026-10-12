@@ -23,7 +23,27 @@ describe('parseShow', () => {
       modelfile: 'FROM /blobs/sha256-x\nRENDERER qwen3.8\nPARSER qwen3.5\n',
       model_info: { 'qwen35.context_length': 262144, 'general.architecture': 'qwen35' },
     });
-    expect(details).toEqual({ name: 'm', capabilities: ['completion', 'tools', 'thinking'], hasRenderer: true, contextLength: 262144 });
+    expect(details).toEqual({
+      name: 'm',
+      capabilities: ['completion', 'tools', 'thinking'],
+      hasRenderer: true,
+      contextLength: 262144,
+      architecture: 'qwen35',
+      baseModel: null,
+      basename: null,
+    });
+  });
+
+  it('reads the base model a GGUF was made from as a Hugging Face repo id', () => {
+    const details = parseShow('m', {
+      model_info: {
+        'general.basename': 'Qwen3.8-27B',
+        'general.base_model.0.repo_url': 'https://huggingface.co/Qwen/Qwen3.8-27B',
+      },
+    });
+    expect(details.baseModel).toBe('Qwen/Qwen3.8-27B');
+    expect(details.basename).toBe('Qwen3.8-27B');
+    expect(parseShow('m', { model_info: { 'general.base_model.0.repo_url': 'https://example.com/Qwen/Qwen3.8-27B' } }).baseModel).toBeNull();
   });
 
   it('reports a model without a renderer', () => {

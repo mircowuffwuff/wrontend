@@ -398,6 +398,42 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await waitFor(`!document.querySelector('.browser')`);
   });
 
+  // the stand-in registry publishes Claude Code 0.90.0 once 0.89.1 is set up: the updater offers it, pins it and installs it
+  await step('17-updater', async () => {
+    const icon = `document.querySelector('.status button[aria-label="Updates"]')`;
+    const row = `document.querySelector('.update-row')`;
+    const headButton = (text: string) => `[...document.querySelectorAll('.updater-head button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)})`;
+    await js(`window.wrontend.invoke('updates:check')`);
+    await waitFor(`${icon}.classList.contains('attention')`);
+    await js(`${icon}.click()`);
+    await waitFor(`${row}?.textContent.includes('0.89.1 → 0.90.0')`);
+    const group = await js<string>(`document.querySelector('.update-group .settings-area-label').textContent`);
+    if (group !== 'Harnesses') throw new Error(`Claude Code's row is under ${group}`);
+    await shot('17-updater');
+
+    await js(`${row}.querySelector('button[title="More"]').click()`);
+    await waitFor(`document.querySelector('.update-row .menu')`);
+    await shot('17-updater-menu');
+    await js(`[...document.querySelectorAll('.update-row .menu-item')].find((b) => b.textContent.startsWith('Pin')).click()`);
+    await waitFor(`${row}.classList.contains('pinned') && !${headButton('Update All')} && !${icon}.classList.contains('attention')`);
+    await shot('17-updater-pinned');
+    await js(`${row}.querySelector('button[title="More"]').click()`);
+    await js(`[...document.querySelectorAll('.update-row .menu-item')].find((b) => b.textContent.startsWith('Unpin')).click()`);
+    await waitFor(`!${row}.classList.contains('pinned') && ${headButton('Update All')}`);
+
+    await js(`[...${row}.querySelectorAll('button')].find((b) => b.textContent === 'Update').click()`);
+    await waitFor(`/Downloading Claude Code 0.90.0 · [1-9]/.test(${row}?.textContent ?? '')`);
+    await shot('17-updater-updating');
+    if ((await js<string>(`document.querySelector('.harness-chip').textContent`)).includes('Setting up')) throw new Error('the harness reads as being set up while it updates');
+    await waitFor(`!${row} && document.querySelector('.updater-empty')`, 20_000);
+    await shot('17-updater-done');
+    const state = await js<{ status: string; version?: string }>(`window.wrontend.invoke('harness:list').then((l) => l.find((h) => h.id === 'claude-code').state)`);
+    if (state.status !== 'installed' || state.version !== '0.90.0') throw new Error(`Claude Code is ${JSON.stringify(state)} after updating it`);
+    if (await js<boolean>(`${icon}.classList.contains('attention')`)) throw new Error('the icon still asks for attention with nothing out of date');
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await waitFor(`!document.querySelector('.updater')`);
+  });
+
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));
   console.log(`wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`);

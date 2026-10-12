@@ -9,12 +9,14 @@ import { ModelBrowser } from './components/ModelBrowser';
 import { SettingsDialog } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
+import { UpdaterPanel } from './components/Updater';
 import { startPullSync, useBrowser } from './state/browser';
 import { useDraft } from './state/draft';
 import { startHarnessSync, useHarnesses } from './state/harnesses';
 import { startOllamaSync } from './state/ollama';
 import { startSessionSync, useSessions } from './state/sessions';
 import { startSettingsSync, useSettings } from './state/settings';
+import { startUpdatesSync, useUpdates } from './state/updates';
 
 export function App() {
   useEffect(() => startSettingsSync(), []);
@@ -22,6 +24,7 @@ export function App() {
   useEffect(() => startHarnessSync(), []);
   useEffect(() => startSessionSync(), []);
   useEffect(() => startPullSync(), []);
+  useEffect(() => startUpdatesSync(), []);
   useEffect(() => {
     void bridge.invoke('app:autoprompt').then((auto) => {
       if (!auto) return;
@@ -33,6 +36,7 @@ export function App() {
   const harnessName = useHarnesses((s) => s.list.find((h) => h.id === session?.info.harness)?.name ?? session?.info.harness);
   const settingsOpen = useSettings((s) => s.section !== null);
   const browserOpen = useBrowser((s) => s.open);
+  const updaterOpen = useUpdates((s) => s.open);
 
   return (
     <div className="app">
@@ -79,6 +83,7 @@ export function App() {
       </main>
       {settingsOpen && <SettingsDialog />}
       {browserOpen && <ModelBrowser />}
+      {updaterOpen && <UpdaterPanel />}
       <ConfirmDialog />
     </div>
   );

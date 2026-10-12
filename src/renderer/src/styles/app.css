@@ -86,6 +86,11 @@ button {
   background: var(--hover);
   color: var(--text);
 }
+/* something waits for the user behind this button */
+.icon-button.attention,
+.icon-button.attention:hover {
+  color: var(--accent);
+}
 
 .search {
   margin: 4px 12px 8px;
@@ -390,6 +395,9 @@ button.chip:hover {
 }
 .menu.end {
   right: 0;
+}
+.menu.fixed {
+  position: fixed;
 }
 
 .menu-item {
@@ -1525,4 +1533,101 @@ a.button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+/* the updater: a narrower panel over the dimmed app, rows grouped by kind under the Settings dialog's area labels */
+
+.updater {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: min(720px, 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-lg);
+  background: var(--bg);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.36);
+}
+.updater-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 16px 14px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.updater-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.updater-title h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+}
+.updater-head .button {
+  margin: 0 4px;
+}
+.updater-body {
+  padding: 8px 8px 16px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  user-select: text;
+}
+.updater-body > .browser-note {
+  margin: 8px 16px;
+}
+.updater-empty {
+  padding: 40px 0 28px;
+}
+.update-group + .update-group {
+  margin-top: 10px;
+}
+.update-group .settings-area-label {
+  padding-left: 16px;
+}
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 16px;
+}
+.update-row + .update-row {
+  border-top: 1px solid var(--line);
+}
+.update-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.update-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-versions {
+  font-size: 12px;
+  color: var(--muted);
+}
+.update-row.pinned .update-name,
+.update-row.pinned .update-versions {
+  color: var(--muted);
+}
+.update-row .button {
+  flex-shrink: 0;
+}
+.update-failure {
+  min-width: 0;
+}
+.update-log {
+  max-height: 160px;
+  margin: 0;
+  overflow: auto;
+  font-size: 11px;
+  white-space: pre-wrap;
 }

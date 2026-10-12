@@ -6,6 +6,7 @@ import type { ModelDetails, ModelEntry, OllamaStatus } from './ollama';
 import type { Effort } from './proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
 import type { AboutInfo, OllamaServerState, OllamaServerValues, Settings, SettingsPatch } from './settings';
+import type { UpdatesState } from './updates';
 
 export interface InvokeMap {
   'window:minimize': { args: []; result: void };
@@ -42,6 +43,15 @@ export interface InvokeMap {
   'harness:list': { args: []; result: HarnessEntry[] };
   // sets a harness up; its progress arrives as harness:changed
   'harness:install': { args: [id: string]; result: void };
+  // what is out of date, as the last check found it
+  'updates:state': { args: []; result: UpdatesState };
+  // checks again now; the result arrives as updates:changed
+  'updates:check': { args: []; result: void };
+  // answers at once: the update reports itself as updates:changed, and a failure stays on its row
+  'updates:install': { args: [id: string]; result: void };
+  // hides the row until a newer version than the one it offers appears
+  'updates:skip': { args: [id: string]; result: void };
+  'updates:pin': { args: [id: string, pinned: boolean]; result: void };
   'session:stored': { args: []; result: StoredSession[] };
   'session:create': { args: [options: CreateSessionOptions]; result: CreatedSession };
   'session:save-items': { args: [id: string, items: unknown[]]; result: void };
@@ -63,6 +73,7 @@ export interface EventMap {
   // something about a model's copy changed: the model list is read again
   'ollama:models-changed': void;
   'models:pull-changed': PullEntry;
+  'updates:changed': UpdatesState;
 }
 
 export type InvokeChannel = keyof InvokeMap;

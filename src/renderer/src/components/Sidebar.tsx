@@ -1,6 +1,8 @@
+import { outdated } from '@shared/updates';
 import { useOllama } from '../state/ollama';
 import { useSessions } from '../state/sessions';
 import { useSettings } from '../state/settings';
+import { useUpdates } from '../state/updates';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
 
@@ -12,6 +14,7 @@ function OllamaStatusRow() {
   const status = useOllama((s) => s.status);
   const restarting = useOllama((s) => s.restarting);
   const loaded = status?.loaded[0];
+  const pending = useUpdates((s) => outdated(s.updates).length);
   let colour = 'var(--line)';
   let headline = 'Looking for Ollama…';
   let detail = '';
@@ -44,6 +47,14 @@ function OllamaStatusRow() {
           </div>
         )}
       </div>
+      <button
+        className={`icon-button${pending ? ' attention' : ''}`}
+        aria-label="Updates"
+        title={pending ? `${pending} update${pending === 1 ? '' : 's'} available` : 'Updates'}
+        onClick={() => useUpdates.getState().show()}
+      >
+        <Icon name="download" />
+      </button>
       <button className="icon-button" aria-label="Settings" title="Settings" onClick={() => useSettings.getState().open()}>
         <Icon name="settings" />
       </button>

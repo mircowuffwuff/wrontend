@@ -23,6 +23,8 @@ import { OllamaMonitor } from './ollama/monitor';
 import { OllamaServer, windowsProcesses, type ProcessControl } from './ollama/server-settings';
 import { ProxyServer } from './proxy/server';
 import { SettingsStore } from './settings/store';
+import { npmSource } from './updates/npm-source';
+import { Updater } from './updates/updater';
 import { prepareSmoke, runSmoke, smokeFolder } from './smoke';
 
 // the window's own colours before the renderer has painted, and behind the native window buttons
@@ -67,7 +69,13 @@ const componentStore = new ComponentStore(join(app.getPath('userData'), 'compone
 const npm = new NpmDriver(
   componentStore,
   CATALOG,
-  smoke ? { findNpm: async () => fakeNpm(join(app.getPath('userData'), 'fake-npm'), { latest: '0.89.1', chunks: 12, fail: smokeInstalls++ === 0 }) } : {},
+  // once Claude Code is set up, its stand-in registry has a newer release, for the updater to find
+  smoke
+    ? {
+        findNpm: async () =>
+          fakeNpm(join(app.getPath('userData'), 'fake-npm'), { latest: componentStore.active('claude-code') ? '0.90.0' : '0.89.1', chunks: 12, fail: smokeInstalls++ === 0 }),
+      }
+    : {},
 );
 const derived = new DerivedModels(ollama, componentStore, RENDERERS, { enabled: () => settings.value.models.derive, readOnly: !!smoke });
 // the model browser reads Hugging Face and pulls into Ollama; the smoke test does neither, and measures a fixed machine
@@ -88,13 +96,26 @@ const components = new ComponentEngine([npm, derived, pulls], (id, state) => {
     }
   }
   for (const harness of harnesses()) if (PROFILES[harness.id]?.component === id) send(win, 'harness:changed', harness);
+  updater.componentChanged(id, state);
 });
+const updater = new Updater(
+  [npmSource(npm, componentStore, CATALOG)],
+  join(app.getPath('userData'), 'updates.json'),
+  (component) => components.install(component),
+  (state) => send(win, 'updates:changed', state),
+);
 
 // the scripted test agent is offered only where it is useful: in a development run and in the smoke test
 function harnesses(): HarnessEntry[] {
   return Object.values(PROFILES)
     .filter((p) => p.component !== null || smoke || !app.isPackaged)
-    .map((p) => ({ id: p.id, name: p.name, state: p.component ? components.state(p.component) : { status: 'installed', version: null } }));
+    .map((p) => ({ id: p.id, name: p.name, state: p.component ? harnessState(p.component) : { status: 'installed', version: null } }));
+}
+
+// an update under way, or one that failed, shows in the updater: the harness stays usable at the version it has
+function harnessState(component: string): ComponentState {
+  const installed = npm.state(component);
+  return installed.status === 'installed' ? installed : components.state(component);
 }
 
 function ollamaAddress(value: Settings): string {
@@ -285,6 +306,15 @@ function registerHandlers(): void {
     // a failure reaches the renderer as the harness's state, with npm's output
     await components.install(component).catch(() => {});
   });
+  handle('updates:state', () => updater.state());
+  handle('updates:check', () => {
+    void updater.check();
+  });
+  handle('updates:install', (id) => {
+    void updater.update(id).catch(() => {});
+  });
+  handle('updates:skip', (id) => updater.skip(id));
+  handle('updates:pin', (id, pinned) => updater.pin(id, pinned));
   handle('session:stored', () => sessions().stored());
   handle('session:create', (options) => sessions().create(options));
   handle('session:save-items', (id, items) => sessions().saveItems(id, items));
@@ -316,6 +346,7 @@ app.whenReady().then(async () => {
   nativeTheme.themeSource = settings.value.appearance.theme;
   host = new AgentHost(proxy, app.getPath('userData'), (component) => npm.program(component), (event) => send(win, 'session:event', event), settings.value.proxy.backgroundPolicy);
   monitor.start();
+  updater.start();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -329,5 +360,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   host?.disposeAll();
   monitor.stop();
+  updater.stop();
   void proxy.stop();
 });

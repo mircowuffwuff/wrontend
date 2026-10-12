@@ -12,6 +12,7 @@
   --on-accent: #2a0f17;
   --olive: #5f6b2e;
   --mustard: #c9c255;
+  --leaf-green: #8ad460;
   --add: #c9c255;
   --remove: #e8735a;
   --hover: rgb(236 230 207 / 0.06);
@@ -61,6 +62,7 @@
     --on-accent: #ffffff;
     --olive: #8a9a52;
     --mustard: #7d7410;
+    --leaf-green: #2e8a1c;
     --add: #5f7012;
     --remove: #b8432c;
     --hover: rgb(31 42 23 / 0.05);

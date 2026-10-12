@@ -1448,25 +1448,11 @@ a.button {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* a quant that runs fully on the GPU stands out in green; one that does not fit at all recedes */
 .fit {
   font-size: 12px;
 }
-/* a quant that fits is the ordinary case: only its dot is coloured */
-.fit.good {
-  color: var(--muted);
-}
-.fit.good::before {
-  background: var(--olive) !important;
-}
-.fit.warn {
-  color: var(--mustard);
-}
-.fit.bad {
-  color: var(--remove);
-}
-.fit.good::before,
-.fit.warn::before,
-.fit.bad::before {
+.fit::before {
   content: '';
   display: inline-block;
   width: 6px;
@@ -1475,6 +1461,18 @@ a.button {
   border-radius: 50%;
   background: currentColor;
   vertical-align: 1px;
+}
+.fit.good {
+  color: var(--leaf-green);
+}
+.fit.warn {
+  color: var(--mustard);
+}
+.fit.bad {
+  color: var(--muted);
+}
+.fit.bad::before {
+  background: var(--olive);
 }
 
 /* the picked quant's download, kept in view at the page's foot */

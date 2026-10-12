@@ -412,6 +412,23 @@ button.chip:hover {
   color: var(--muted);
 }
 
+/* the model picker's word on a model's reasoning, under its sizes */
+.reasoning-note {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+}
+.reasoning-note.warning,
+.model-trigger svg {
+  color: var(--mustard);
+}
+.model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .menu-empty {
   padding: 8px 10px;
   font-size: 13px;

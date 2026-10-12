@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge';
 import type { ComponentState, HarnessEntry } from '@shared/components';
+import type { ModelReasoning } from '@shared/ollama';
 import { useDraft } from '../state/draft';
 import { isReady, useHarnesses } from '../state/harnesses';
 import { useOllama } from '../state/ollama';
@@ -106,6 +107,26 @@ function SetupFailed({ harness }: { harness: HarnessEntry }) {
   );
 }
 
+// why a model loses its earlier reasoning, or null when it keeps it
+function lostReason(reasoning: ModelReasoning): string | null {
+  if (reasoning.status === 'lost') return reasoning.reason;
+  if (reasoning.status === 'derived' && reasoning.state.status === 'failed') return `${reasoning.state.error} ${reasoning.state.detail}`;
+  return null;
+}
+
+// a model that keeps its reasoning says nothing; a copy being made says so, and a model that loses it is warned about
+function ReasoningNote({ reasoning }: { reasoning: ModelReasoning }) {
+  if (reasoning.status === 'derived' && reasoning.state.status === 'installing') return <span className="reasoning-note">{reasoning.state.step}…</span>;
+  const lost = lostReason(reasoning);
+  if (!lost) return null;
+  return (
+    <span className="reasoning-note warning" title={lost}>
+      <Icon name="warning" size={12} />
+      Loses its earlier reasoning
+    </span>
+  );
+}
+
 export function Composer({ session }: { session: SessionView | null }) {
   const [text, setText] = useState('');
   const area = useRef<HTMLTextAreaElement>(null);
@@ -134,6 +155,8 @@ export function Composer({ session }: { session: SessionView | null }) {
   useEffect(() => area.current?.focus(), [session?.info.id]);
 
   const harness = useHarnesses((s) => s.list.find((h) => h.id === draft.harness));
+  const picked = models.find((m) => m.name === model);
+  const pickedNote = picked ? lostReason(picked.reasoning) : null;
   const canSend =
     (text.trim().length > 0 || cards.length > 0) && !!model && (!fresh || (!!draft.folder && isReady(harness))) && !running;
 
@@ -243,15 +266,31 @@ ${c.reply}` : c.quote}>
           <span className="spacer" />
           <Menu
             align="end"
-            trigger={<span className="mono">{model ?? 'Choose Model'}</span>}
+            trigger={
+              <span className="model-trigger">
+                {pickedNote && <Icon name="warning" size={14} />}
+                <span className="mono">{model ?? 'Choose Model'}</span>
+              </span>
+            }
+            title={pickedNote ?? undefined}
             empty="Ollama has no models, or is not running."
             items={models.map((m) => ({
               key: m.name,
               label: <span className="mono">{m.name}</span>,
-              detail: [m.parameterSize, m.quantization, gb(m.sizeBytes)].filter(Boolean).join(' · '),
+              detail: (
+                <>
+                  {[m.parameterSize, m.quantization, gb(m.sizeBytes)].filter(Boolean).join(' · ')}
+                  <ReasoningNote reasoning={m.reasoning} />
+                </>
+              ),
               selected: m.name === model,
             }))}
-            onPick={(name) => (fresh ? draft.setModel(name) : void setModel(session.info.id, name))}
+            onPick={(name) => {
+              // a copy with a renderer, where the model needs one, is made now rather than on the first request
+              void bridge.invoke('ollama:prepare', name);
+              if (fresh) draft.setModel(name);
+              else void setModel(session.info.id, name);
+            }}
           />
           <Menu
             align="end"

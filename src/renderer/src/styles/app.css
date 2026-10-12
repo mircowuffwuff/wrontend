@@ -86,6 +86,12 @@ button {
   background: var(--hover);
   color: var(--text);
 }
+.icon-button:disabled {
+  opacity: 0.4;
+  background: none;
+  color: var(--muted);
+  cursor: default;
+}
 /* something waits for the user behind this button */
 .icon-button.attention,
 .icon-button.attention:hover {

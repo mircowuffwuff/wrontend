@@ -468,6 +468,34 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await waitFor(`!document.querySelector('.updater')`);
   });
 
+  // two sessions in two folders, made through main and shown by a reload, the way stored sessions come back
+  await step('20-sidebar', async () => {
+    const project = realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-')));
+    const other = realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-sidebar-')));
+    removeAfterExit([project, other]);
+    for (const folder of [project, other]) {
+      await js(`window.wrontend.invoke('session:create', { harness: 'fake', folder: ${JSON.stringify(folder)}, model: 'smoke-model', effort: 'on' })`);
+    }
+    win.webContents.reload();
+    await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
+    await waitFor(`document.querySelectorAll('.group').length === 2`);
+
+    // Back and Forward: new session, the first group's session, the second's
+    const back = `document.querySelector('.sidebar-top button[aria-label="Back"]')`;
+    const forward = `document.querySelector('.sidebar-top button[aria-label="Forward"]')`;
+    if (!(await js<boolean>(`${back}.disabled && ${forward}.disabled`))) throw new Error('Back or Forward is enabled with nothing opened yet');
+    await js(`document.querySelectorAll('.session-row')[0].click()`);
+    await js(`document.querySelectorAll('.session-row')[1].click()`);
+    await waitFor(`document.querySelectorAll('.session-row')[1].classList.contains('active')`);
+    await js(`${back}.click()`);
+    await waitFor(`document.querySelectorAll('.session-row')[0].classList.contains('active')`);
+    await js(`${back}.click()`);
+    await waitFor(`document.querySelector('.greeting') && ${back}.disabled && !${forward}.disabled`);
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }))`);
+    await waitFor(`document.querySelectorAll('.session-row')[0].classList.contains('active') && !${back}.disabled`);
+    await shot('20-sidebar-history');
+  });
+
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));
   console.log(`wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`);

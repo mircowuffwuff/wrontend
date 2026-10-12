@@ -33,6 +33,26 @@ export function App() {
       void useSessions.getState().createAndPrompt({ harness: auto.harness, folder: auto.folder, model: auto.model, effort: draft.effort }, auto.text);
     });
   }, []);
+  // Back and Forward from the keyboard and the mouse's side buttons, as in a browser
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.shiftKey || e.metaKey) return;
+      if (e.key === 'ArrowLeft') useSessions.getState().back();
+      else if (e.key === 'ArrowRight') useSessions.getState().forward();
+      else return;
+      e.preventDefault();
+    };
+    const onMouse = (e: MouseEvent) => {
+      if (e.button === 3) useSessions.getState().back();
+      else if (e.button === 4) useSessions.getState().forward();
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mouseup', onMouse);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mouseup', onMouse);
+    };
+  }, []);
   const session = useSessions((s) => (s.activeId ? s.sessions[s.activeId] : null));
   const harnessName = useHarnesses((s) => s.list.find((h) => h.id === session?.info.harness)?.name ?? session?.info.harness);
   const settingsOpen = useSettings((s) => s.section !== null);

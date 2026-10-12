@@ -5,6 +5,7 @@ import type { SessionMode } from '@agentclientprotocol/sdk';
 import type { Effort, RequestStats } from '@shared/proxy';
 import type { CreateSessionOptions, PermissionRequest, SessionEvent, SessionInfo } from '@shared/session';
 import { bridge } from '../bridge';
+import { back, forget, forward, NO_HISTORY, visit, type History } from './history';
 import { addError, addNotice, addUser, applyUpdate, endTurn, type TranscriptItem } from './transcript';
 
 export interface SessionView {
@@ -23,6 +24,7 @@ interface SessionsState {
   sessions: Record<string, SessionView>;
   order: string[];
   activeId: string | null;
+  history: History;
   creating: boolean;
   loaded: boolean;
   load(): Promise<void>;
@@ -35,6 +37,8 @@ interface SessionsState {
   setMode(id: string, modeId: string): Promise<void>;
   remove(id: string): Promise<void>;
   open(id: string | null): void;
+  back(): void;
+  forward(): void;
 }
 
 function view(info: SessionInfo, items: TranscriptItem[] = []): SessionView {
@@ -61,6 +65,7 @@ export const useSessions = create<SessionsState>((set, get) => ({
   sessions: {},
   order: [],
   activeId: null,
+  history: NO_HISTORY,
   creating: false,
   loaded: false,
 
@@ -82,7 +87,7 @@ export const useSessions = create<SessionsState>((set, get) => ({
     try {
       const { info, modes } = await bridge.invoke('session:create', options);
       const created = { ...view(info), modes: modes ?? { current: '', available: [] } };
-      set((s) => ({ sessions: { ...s.sessions, [info.id]: created }, order: [info.id, ...s.order], activeId: info.id }));
+      set((s) => ({ sessions: { ...s.sessions, [info.id]: created }, order: [info.id, ...s.order], activeId: info.id, history: visit(s.history, s.activeId, info.id) }));
       await get().prompt(info.id, text);
     } catch (cause) {
       throw cause;
@@ -141,12 +146,27 @@ export const useSessions = create<SessionsState>((set, get) => ({
     set((s) => {
       const sessions = { ...s.sessions };
       delete sessions[id];
-      return { sessions, order: s.order.filter((o) => o !== id), activeId: s.activeId === id ? null : s.activeId };
+      const activeId = s.activeId === id ? null : s.activeId;
+      return { sessions, order: s.order.filter((o) => o !== id), activeId, history: forget(s.history, activeId, id) };
     });
   },
 
   open(id) {
-    set({ activeId: id });
+    set((s) => ({ activeId: id, history: visit(s.history, s.activeId, id) }));
+  },
+
+  back() {
+    set((s) => {
+      const step = back(s.history, s.activeId);
+      return step ? { activeId: step.screen, history: step.history } : {};
+    });
+  },
+
+  forward() {
+    set((s) => {
+      const step = forward(s.history, s.activeId);
+      return step ? { activeId: step.screen, history: step.history } : {};
+    });
   },
 }));
 

@@ -99,16 +99,18 @@ function SessionList() {
 
 export function Sidebar() {
   const { activeId, open } = useSessions();
+  const canBack = useSessions((s) => s.history.past.length > 0);
+  const canForward = useSessions((s) => s.history.future.length > 0);
   return (
     <aside className="sidebar">
       <div className="sidebar-top drag">
         <button className="icon-button" aria-label="Toggle sidebar">
           <Icon name="sidebar" />
         </button>
-        <button className="icon-button" aria-label="Back">
+        <button className="icon-button" aria-label="Back" title="Back" disabled={!canBack} onClick={() => useSessions.getState().back()}>
           <Icon name="back" />
         </button>
-        <button className="icon-button" aria-label="Forward">
+        <button className="icon-button" aria-label="Forward" title="Forward" disabled={!canForward} onClick={() => useSessions.getState().forward()}>
           <Icon name="forward" />
         </button>
       </div>

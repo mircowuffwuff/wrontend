@@ -48,6 +48,7 @@ i like commits across the whole repo nice and streamlined. try and follow these 
   - `ipc` — the typed channel between main and renderer
   - `ui` — the renderer
   - `settings` — the config file and the Settings screen
+  - `components` — the component engine: installing, versioning and resolving the parts wrontend downloads where they are first needed
   - `build` — packaging and the installer
 
   a commit that touches the whole repo or more than one scope takes no scope. the list grows when a new part of the app earns one.

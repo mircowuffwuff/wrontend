@@ -8,6 +8,9 @@ export default defineConfig({
   main: {
     resolve: { alias },
     build: {
+      // the ACP SDK and zod, its peer, are bundled in: the packaged app loads nothing from a node_modules folder, where
+      // Node's lookup would otherwise climb out of the app and find whatever lies above it
+      externalizeDeps: false,
       rollupOptions: {
         // the scripted test agent is its own program, started as a child process like any harness
         input: { index: resolve(__dirname, 'src/main/index.ts'), 'fake-agent': resolve(__dirname, 'src/main/host/fake-agent.ts') },

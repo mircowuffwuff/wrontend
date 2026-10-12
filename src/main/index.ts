@@ -27,6 +27,7 @@ import { modelUpdates } from './updates/model-source';
 import { offeredVersion, ollamaUpdates, waitingInstaller } from './updates/ollama-source';
 import { npmUpdates } from './updates/npm-source';
 import { Updater } from './updates/updater';
+import { usePortableData } from './portable';
 import { prepareSmoke, runSmoke, smokeFolder } from './smoke';
 
 // the window's own colours before the renderer has painted, and behind the native window buttons
@@ -40,6 +41,7 @@ let win: BrowserWindow | null = null;
 let host: AgentHost | null = null;
 const smoke = smokeFolder();
 if (smoke) prepareSmoke();
+else usePortableData();
 
 const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'), applySettings);
 const ollama = new OllamaClient(ollamaAddress(settings.value));

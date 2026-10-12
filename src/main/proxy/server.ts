@@ -34,8 +34,12 @@ export class ProxyServer {
   private port = 0;
   private readonly routes = new Map<string, Route>();
 
-  // a function, so a changed Ollama address in Settings applies to the next request
-  constructor(private readonly upstream: () => string) {}
+  // upstream is a function, so a changed Ollama address in Settings applies to the next request. resolveModel names the model a
+  // pick is sent to -- its copy with a renderer, where wrontend makes one -- while the stats keep the pick's own name
+  constructor(
+    private readonly upstream: () => string,
+    private readonly resolveModel: (model: string) => Promise<string> = async (model) => model,
+  ) {}
 
   async start(): Promise<number> {
     if (this.server) return this.port;
@@ -117,6 +121,7 @@ export class ProxyServer {
       return;
     }
 
+    rewritten.model = await this.resolveModel(route.settings.model).catch(() => route.settings.model);
     const meter = shape.meter();
     const result = await this.forward(req, res, path + url.search, Buffer.from(JSON.stringify(rewritten)), {
       shape,

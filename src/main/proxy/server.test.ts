@@ -111,6 +111,20 @@ describe('ProxyServer', () => {
     expect(sent.model).toBe('other:model');
   });
 
+  it('sends a pick to the model the resolver names, and reports it under the pick', async () => {
+    const port = (ollama.address() as AddressInfo).port;
+    const resolving = new ProxyServer(
+      () => `http://127.0.0.1:${port}`,
+      async (model) => `${model}-wrontend-derived`,
+    );
+    await resolving.start();
+    const route = resolving.register({ ...settings, model: 'hf.co/a/b:Q4' }, (s) => stats.push(s));
+    await (await fetch(`${route.baseUrl}/v1/messages`, { method: 'POST', body: JSON.stringify(request) })).text();
+    expect(JSON.parse(seen[0].body).model).toBe('hf.co/a/b:Q4-wrontend-derived');
+    expect(stats[0].model).toBe('hf.co/a/b:Q4');
+    await resolving.stop();
+  });
+
   it('answers a background request locally when the policy says so', async () => {
     const route = proxy.register({ ...settings, backgroundPolicy: 'local' }, (s) => stats.push(s));
     const res = await fetch(`${route.baseUrl}/v1/messages`, {

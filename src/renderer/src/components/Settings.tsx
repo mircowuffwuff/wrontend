@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { BackgroundPolicy } from '@shared/proxy';
 import type { AboutInfo, OllamaServerState, OllamaServerValues, OllamaServerVar, Settings, SettingsPatch } from '@shared/settings';
 import { bridge } from '../bridge';
+import { confirm } from '../state/confirm';
 import { useOllama } from '../state/ollama';
 import { useSessions } from '../state/sessions';
 import { errorText, useSettings } from '../state/settings';
@@ -468,14 +469,24 @@ function sections(o: {
 function OllamaPanel({ server, onRestarted }: { server: OllamaServerState | null; onRestarted: () => void }) {
   const status = useOllama((s) => s.status);
   const restarting = useOllama((s) => s.restarting);
-  const generating = useSessions((s) => Object.values(s.sessions).some((x) => x.running));
   const [error, setError] = useState<string | null>(null);
   const canRestart = server !== null && !server.unsupported;
   const pending = server?.pending.length ?? 0;
   const running = status?.reachable ?? false;
 
-  const restart = () => {
+  const restart = async () => {
     setError(null);
+    // a restart cuts off every reply being written; with nothing being written it goes ahead without asking
+    const working = Object.values(useSessions.getState().sessions).filter((s) => s.running);
+    if (running && working.length > 0) {
+      const ok = await confirm({
+        title: 'Restart Ollama?',
+        message: working.length === 1 ? 'This session is working, and its reply stops:' : 'These sessions are working, and their replies stop:',
+        items: working.map((s) => s.info.title),
+        action: 'Restart Ollama',
+      });
+      if (!ok) return;
+    }
     bridge.invoke('ollama:restart').then(onRestarted, (cause) => setError(errorText(cause)));
   };
 
@@ -490,13 +501,12 @@ function OllamaPanel({ server, onRestarted }: { server: OllamaServerState | null
         {canRestart && (
           <div className="setting-description">
             {pending ? `${pending === 1 ? 'A change waits' : `${pending} changes wait`} for a restart.` : running ? 'Stops Ollama and starts it again with the settings below.' : 'Starts Ollama with the settings below.'}
-            {running && generating && ' A reply being written now stops.'}
           </div>
         )}
         {error && <div className="setting-error">{error}</div>}
       </div>
       {canRestart && (
-        <button className={`button${running ? ' danger' : ''}${pending ? ' strong' : ''}`} disabled={restarting} onClick={restart}>
+        <button className={`button${running ? ' danger' : ''}${pending ? ' strong' : ''}`} disabled={restarting} onClick={() => void restart()}>
           <Icon name="restart" size={16} />
           {restarting ? 'Restarting…' : running ? 'Restart Ollama' : 'Start Ollama'}
         </button>

@@ -31,6 +31,8 @@ interface Step {
 export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
   mkdirSync(out, { recursive: true });
   const steps: Step[] = [];
+  // parts of a step this machine cannot exercise, said in the report rather than passed in silence
+  const skipped: string[] = [];
   const consoleErrors: string[] = [];
   win.webContents.on('console-message', (event) => {
     if (event.level === 'error') consoleErrors.push(event.message);
@@ -152,6 +154,45 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await shot('07-light-theme');
     nativeTheme.themeSource = 'system';
   });
+  await step('07-restart-asks-first', async () => {
+    const restartButton = `document.querySelector('.ollama-panel button')`;
+    const openOllamaSettings = async () => {
+      await js(`document.querySelector('.status button[aria-label="Settings"]').click()`);
+      await waitFor(`document.querySelector('.settings-nav')`);
+      await js(`[...document.querySelectorAll('.settings-nav .nav-item')].find((b) => b.textContent === 'Ollama').click()`);
+      await waitFor(`${restartButton}`);
+    };
+    const escape = () => js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+
+    await type('slow while Ollama restarts');
+    await waitFor(`document.querySelector('.send.stop')`);
+    await openOllamaSettings();
+    // only a running Ollama is restarted, so only then can there be anything to interrupt
+    if ((await js<string>(`${restartButton}.textContent`)).includes('Restart Ollama')) {
+      await js(`${restartButton}.click()`);
+      await waitFor(`[...document.querySelectorAll('.confirm-items li')].some((li) => li.textContent.startsWith('Please make the readme'))`);
+      await shot('07-restart-confirm');
+      await escape();
+      await waitFor(`!document.querySelector('.confirm')`);
+      await new Promise((r) => setTimeout(r, 300));
+      if (!(await js<boolean>(`!!document.querySelector('.settings')`))) throw new Error('Escape on the confirmation closed Settings too');
+      if (await js<boolean>(`!!document.querySelector('.ollama-panel .setting-error')`)) throw new Error('declining the confirmation still restarted Ollama');
+    } else {
+      skipped.push('07-restart-asks-first: Ollama is not running, so a restart interrupts nothing and the dialog is not shown');
+    }
+    await escape();
+    await waitFor(`!document.querySelector('.settings')`);
+    await js(`document.querySelector('.send.stop').click()`);
+    await waitFor(`!document.querySelector('.send.stop')`);
+
+    // nothing working: the restart goes ahead unasked, into the smoke test's process control, which finds no Ollama to start
+    await openOllamaSettings();
+    await js(`${restartButton}.click()`);
+    await waitFor(`document.querySelector('.ollama-panel .setting-error')?.textContent.includes('found no Ollama')`);
+    if (await js<boolean>(`!!document.querySelector('.confirm')`)) throw new Error('the confirmation showed with nothing to interrupt');
+    await escape();
+    await waitFor(`!document.querySelector('.settings')`);
+  });
   await step('08-reload-restores', async () => {
     const before = await js<number>(`document.querySelectorAll('.transcript > *').length`);
     win.webContents.reload();
@@ -228,7 +269,7 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
   });
 
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
-  await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, consoleErrors }, null, 2));
+  await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));
   console.log(`wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`);
   app.exit(passed ? 0 : 1);
 }

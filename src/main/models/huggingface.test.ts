@@ -63,6 +63,14 @@ describe('repo details', () => {
     expect(details.quants.at(-1)?.fit).toBe('too-large');
   });
 
+  it('recommends up to Q8_0 when the unquantized weights fit too, and those only when nothing smaller does', () => {
+    const file = (path: string, gb: number) => ({ path, sizeBytes: gb * GB, sha256: null });
+    const small = [file('Qwen3.5-4B-Q4_K_M.gguf', 2.7), file('Qwen3.5-4B-Q8_0.gguf', 4.5), file('Qwen3.5-4B-BF16.gguf', 8.4), file('Qwen3.5-4B-F32.gguf', 16.8)];
+    expect(repoDetails('unsloth/Qwen3.5-4B-GGUF', small, fakeHardware).recommended).toBe('Q8_0');
+    const unquantized = [file('tiny-F32.gguf', 1.6), file('tiny-BF16.gguf', 0.8)];
+    expect(repoDetails('someone/tiny-GGUF', unquantized, fakeHardware).recommended).toBe('BF16');
+  });
+
   it('says nothing about fit without hardware to measure against', async () => {
     const details = repoDetails('smoke-test/Qwen3.8-27B-GGUF', await fakeSource.files('smoke-test/Qwen3.8-27B-GGUF'), null);
     expect(details.quants.every((q) => q.fit === null)).toBe(true);

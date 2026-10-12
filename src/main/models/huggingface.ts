@@ -55,6 +55,8 @@ export class HuggingFace implements ModelSource {
 
 // the quant at the end of a GGUF file's name: Qwen3.8-27B-UD-IQ3_S.gguf -> UD-IQ3_S, model.Q4_K_M.gguf -> Q4_K_M
 const QUANT = /[-._]((?:UD-)?(?:I?Q\d+(?:_[A-Z0-9]+)*|TQ\d(?:_\d)?|BF16|F16|F32|MXFP4(?:_[A-Z0-9]+)*))$/i;
+// the weights as trained, not quantised
+const FULL_PRECISION = /^(?:UD-)?(?:BF16|F16|F32)$/i;
 // one part of a quant split across files, which Ollama does not pull by tag
 const SHARD = /-\d{5}-of-\d{5}\.gguf$/i;
 
@@ -106,8 +108,11 @@ export function repoDetails(repo: string, files: RepoFile[], hardware: Hardware 
     });
   }
   quants.sort((a, b) => a.sizeBytes - b.sizeBytes);
+  // the largest quant that fits fully on the GPU, up to 8 bits: the unquantized weights answer as well as Q8_0 at twice the size,
+  // so they cost speed and context for nothing. they are recommended only in a repo that offers nothing smaller that fits
   const fitting = quants.filter((q) => q.fit === 'gpu');
-  return { id: repo, quants, projectorBytes, recommended: fitting.at(-1)?.tag ?? null, hardware };
+  const recommended = fitting.filter((q) => !FULL_PRECISION.test(q.tag)).at(-1) ?? fitting[0];
+  return { id: repo, quants, projectorBytes, recommended: recommended?.tag ?? null, hardware };
 }
 
 const CHAT = new Set(['text-generation', 'image-text-to-text']);

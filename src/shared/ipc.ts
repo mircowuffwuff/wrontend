@@ -49,6 +49,8 @@ export interface InvokeMap {
   'updates:check': { args: []; result: void };
   // answers at once: the update reports itself as updates:changed, and a failure stays on its row
   'updates:install': { args: [id: string]; result: void };
+  // every row not pinned; Ollama's restart comes once the others are done
+  'updates:install-all': { args: []; result: void };
   // hides the row until a newer version than the one it offers appears
   'updates:skip': { args: [id: string]; result: void };
   'updates:pin': { args: [id: string, pinned: boolean]; result: void };

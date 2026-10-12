@@ -398,8 +398,8 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await waitFor(`!document.querySelector('.browser')`);
   });
 
-  // the stand-in registry publishes Claude Code 0.90.0 once 0.89.1 is set up, and the stand-in Ollama has a model with a newer
-  // upload: the updater offers both, pins one and installs it
+  // the stand-in registry publishes Claude Code 0.90.0 once 0.89.1 is set up, the stand-in Ollama has a model with a newer upload,
+  // and an Ollama update waits: the updater offers all three, pins one and installs it
   const icon = `document.querySelector('.status button[aria-label="Updates"]')`;
   const rowOf = (name: string) => `[...document.querySelectorAll('.update-row')].find((r) => r.querySelector('.update-name').textContent.startsWith(${JSON.stringify(name)}))`;
   const pickFrom = async (row: string, item: string) => {
@@ -414,9 +414,9 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await js(`window.wrontend.invoke('updates:check')`);
     await waitFor(`${icon}.classList.contains('attention')`);
     await js(`${icon}.click()`);
-    await waitFor(`${claude}?.textContent.includes('0.89.1 → 0.90.0') && ${model}`);
+    await waitFor(`${claude}?.textContent.includes('0.89.1 → 0.90.0') && ${model} && ${rowOf('Ollama')}`);
     const groups = await js<string[]>(`[...document.querySelectorAll('.update-group .settings-area-label')].map((l) => l.textContent)`);
-    if (groups.join() !== 'Harnesses,Models') throw new Error(`the groups read ${JSON.stringify(groups)}`);
+    if (groups.join() !== 'Harnesses,Ollama,Models') throw new Error(`the groups read ${JSON.stringify(groups)}`);
     await shot('17-updater');
 
     await js(`${claude}.querySelector('button[title="More"]').click()`);
@@ -436,7 +436,7 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     const state = await js<{ status: string; version?: string }>(`window.wrontend.invoke('harness:list').then((l) => l.find((h) => h.id === 'claude-code').state)`);
     if (state.status !== 'installed' || state.version !== '0.90.0') throw new Error(`Claude Code is ${JSON.stringify(state)} after updating it`);
   });
-  // the model's pull stops halfway and fails: the failure stays on its row, and skipping the upload empties the panel
+  // the model's pull stops halfway and fails: the failure stays on its row, and skipping the upload takes the row away
   await step('18-updater-model', async () => {
     const text = await js<string>(`${model}.querySelector('.update-versions').textContent`);
     if (text !== 'New upload · 12.0 GB to download') throw new Error(`the model's row reads ${text}`);
@@ -448,8 +448,19 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     if (!(await js<boolean>(`[...${model}.querySelectorAll('button')].some((b) => b.textContent === 'Try Again')`))) throw new Error('a failed update offers no Try Again');
     await shot('18-model-failed');
     await pickFrom(model, 'Skip This Version');
-    await waitFor(`!${model} && document.querySelector('.updater-empty') && !${icon}.classList.contains('attention')`);
-    await shot('18-updater-empty');
+    await waitFor(`!${model}`);
+  });
+  // Ollama's update is a restart, which the stand-in makes in a moment; then nothing is out of date
+  await step('19-updater-ollama', async () => {
+    const ollama = rowOf('Ollama');
+    const text = await js<string>(`${ollama}.textContent`);
+    if (!text.includes('0.40.3 → 0.40.4') || !text.includes('Update and Restart')) throw new Error(`Ollama's row reads ${text}`);
+    await shot('19-ollama-row');
+    await js(`[...${ollama}.querySelectorAll('button')].find((b) => b.textContent === 'Update and Restart').click()`);
+    await waitFor(`${ollama}?.textContent.includes('Updating Ollama')`);
+    await shot('19-ollama-updating');
+    await waitFor(`!${ollama} && document.querySelector('.updater-empty') && !${icon}.classList.contains('attention')`);
+    await shot('19-updater-empty');
     await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
     await waitFor(`!document.querySelector('.updater')`);
   });

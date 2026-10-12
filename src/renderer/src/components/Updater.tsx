@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { ComponentState } from '@shared/components';
 import { outdated, UPDATE_GROUPS, type UpdateEntry, type UpdateGroup } from '@shared/updates';
 import { bridge } from '../bridge';
+import { confirmRestart } from '../state/restart';
 import { useUpdates } from '../state/updates';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
@@ -23,6 +24,12 @@ function megabytes(bytes: number): string {
 // file sizes as Hugging Face and npm state them, in decimal units
 function size(bytes: number): string {
   return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : megabytes(bytes);
+}
+
+// Ollama's update is a restart, and a restart asks first when it would cut something off
+async function startUpdate(entry: UpdateEntry): Promise<void> {
+  if (entry.group === 'ollama' && !(await confirmRestart('Update and restart Ollama?', 'Update and Restart'))) return;
+  await bridge.invoke('updates:install', entry.id);
 }
 
 // a model has no version to show: its row says what a pull of the same name brings
@@ -57,8 +64,10 @@ export function UpdaterPanel() {
   }, [close]);
 
   const waiting = outdated({ entries, checking, checkedAt, failures }).filter((e) => e.state?.status !== 'installing');
-  const updateAll = () => {
-    for (const entry of waiting) void bridge.invoke('updates:install', entry.id);
+  // Ollama restarts once the other updates are done, so only what already runs is in its way
+  const updateAll = async () => {
+    if (waiting.some((e) => e.group === 'ollama') && !(await confirmRestart('Update and restart Ollama?', 'Update All'))) return;
+    await bridge.invoke('updates:install-all');
   };
 
   return (
@@ -73,7 +82,7 @@ export function UpdaterPanel() {
             <Icon name="restart" />
           </button>
           {waiting.length > 0 && (
-            <button className="button primary" onClick={updateAll}>
+            <button className="button primary" onClick={() => void updateAll()}>
               <Icon name="download" size={16} />
               Update All
             </button>
@@ -115,7 +124,7 @@ export function UpdaterPanel() {
 }
 
 function UpdateRow({ entry }: { entry: UpdateEntry }) {
-  const update = () => void bridge.invoke('updates:install', entry.id);
+  const update = () => void startUpdate(entry);
   const installing = entry.state?.status === 'installing';
   return (
     <div className={`update-row${entry.pinned ? ' pinned' : ''}`}>
@@ -151,7 +160,7 @@ function UpdateRow({ entry }: { entry: UpdateEntry }) {
       {!entry.pinned && (
         <button className="button" disabled={installing} onClick={update}>
           <Icon name="download" size={16} />
-          {installing ? 'Updating…' : entry.state?.status === 'failed' ? 'Try Again' : 'Update'}
+          {installing ? 'Updating…' : entry.state?.status === 'failed' ? 'Try Again' : entry.group === 'ollama' ? 'Update and Restart' : 'Update'}
         </button>
       )}
     </div>
@@ -189,8 +198,11 @@ function UpdateDetail({ entry, state }: { entry: UpdateEntry; state: ComponentSt
     );
   }
   return (
-    <span className={`update-versions${entry.group === 'models' ? '' : ' mono'}`} title={entry.group === 'models' ? `${entry.current} → ${entry.available}` : undefined}>
-      {versionText(entry)}
-    </span>
+    <>
+      <span className={`update-versions${entry.group === 'models' ? '' : ' mono'}`} title={entry.group === 'models' ? `${entry.current} → ${entry.available}` : undefined}>
+        {versionText(entry)}
+      </span>
+      {entry.group === 'ollama' && <span className="setting-description">Downloaded by Ollama. It installs as Ollama restarts.</span>}
+    </>
   );
 }

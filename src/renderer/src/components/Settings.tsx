@@ -5,10 +5,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { BackgroundPolicy } from '@shared/proxy';
 import type { AboutInfo, OllamaServerState, OllamaServerValues, OllamaServerVar, Settings, SettingsPatch } from '@shared/settings';
 import { bridge } from '../bridge';
-import { downloading } from '../state/browser';
-import { confirm } from '../state/confirm';
 import { useOllama } from '../state/ollama';
-import { useSessions } from '../state/sessions';
+import { confirmRestart } from '../state/restart';
 import { errorText, useSettings } from '../state/settings';
 import { Icon, type IconName } from './Icon';
 import { Menu } from './Menu';
@@ -507,21 +505,7 @@ function OllamaPanel({ server, onRestarted }: { server: OllamaServerState | null
 
   const restart = async () => {
     setError(null);
-    // a restart cuts off every reply being written and every download; with nothing under way it goes ahead without asking
-    const working = Object.values(useSessions.getState().sessions).filter((s) => s.running);
-    const pulls = downloading();
-    if (running && working.length + pulls.length > 0) {
-      let message = 'These replies and downloads stop. A download goes on from where it stopped when started again:';
-      if (pulls.length === 0) message = working.length === 1 ? 'This session is working, and its reply stops:' : 'These sessions are working, and their replies stop:';
-      else if (working.length === 0) message = `${pulls.length === 1 ? 'This download stops' : 'These downloads stop'}. A download goes on from where it stopped when started again:`;
-      const ok = await confirm({
-        title: 'Restart Ollama?',
-        message,
-        items: [...working.map((s) => s.info.title), ...pulls.map((name) => `Downloading ${name}`)],
-        action: 'Restart Ollama',
-      });
-      if (!ok) return;
-    }
+    if (!(await confirmRestart('Restart Ollama?', 'Restart Ollama'))) return;
     bridge.invoke('ollama:restart').then(onRestarted, (cause) => setError(errorText(cause)));
   };
 

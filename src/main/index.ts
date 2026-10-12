@@ -24,6 +24,7 @@ import { OllamaServer, windowsProcesses, type ProcessControl } from './ollama/se
 import { ProxyServer } from './proxy/server';
 import { SettingsStore } from './settings/store';
 import { modelUpdates } from './updates/model-source';
+import { offeredVersion, ollamaUpdates, waitingInstaller } from './updates/ollama-source';
 import { npmUpdates } from './updates/npm-source';
 import { Updater } from './updates/updater';
 import { prepareSmoke, runSmoke, smokeFolder } from './smoke';
@@ -63,6 +64,12 @@ const ollamaServer = new OllamaServer({
   reachable: () => ollama.version().then(() => true, () => false),
 });
 
+// where Ollama's tray app downloads its updates, and how long a restart that installs one has to come back: the installer
+// takes about a minute before it starts Ollama again
+const OLLAMA_UPDATES = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Ollama', 'updates_v2') : null;
+const UPDATE_START_MS = 5 * 60 * 1000;
+let smokeOllamaUpdated = false;
+
 // the smoke test sets Claude Code up with a stand-in for npm: no download, and the user's npm is never run. its first install
 // fails, so the failure is seen too. it reads the user's Ollama models but makes no copies of them
 let smokeInstalls = 0;
@@ -100,8 +107,25 @@ const components = new ComponentEngine([npm, derived, pulls], (id, state) => {
   updater.componentChanged(id, state);
 });
 const updater = new Updater(
-  // the smoke test's models and their registry are stand-ins: the user's Ollama and the network are never asked
-  [npmUpdates(npm, componentStore, CATALOG), smoke ? modelUpdates(fakeInstalled, fakeManifests) : modelUpdates(ollama)],
+  // the smoke test's models and their registry are stand-ins, and so is an Ollama update: the user's Ollama and the network are
+  // never asked, and a restart that installs the update only takes a moment
+  [
+    npmUpdates(npm, componentStore, CATALOG),
+    smoke ? modelUpdates(fakeInstalled, fakeManifests) : modelUpdates(ollama),
+    smoke
+      ? ollamaUpdates({
+          waiting: async () => (smokeOllamaUpdated ? null : 'd384a27112bf'),
+          running: async () => '0.40.3',
+          offered: async () => '0.40.4',
+          restart: () => restartOllama(async () => void (await new Promise((r) => setTimeout(r, 1500)), (smokeOllamaUpdated = true))),
+        })
+      : ollamaUpdates({
+          waiting: async () => (ollamaServer.unsupported() ? null : waitingInstaller(OLLAMA_UPDATES)),
+          running: () => ollama.version(),
+          offered: (version) => offeredVersion(version),
+          restart: () => restartOllama(() => ollamaServer.restart(UPDATE_START_MS)),
+        }),
+  ],
   join(app.getPath('userData'), 'updates.json'),
   (component) => components.install(component),
   (state) => send(win, 'updates:changed', state),
@@ -292,15 +316,7 @@ function registerHandlers(): void {
   handle('ollama:default-address', () => resolveBaseUrl(process.env.OLLAMA_HOST));
   handle('ollama:server', () => ollamaServer.state());
   handle('ollama:set-server', (changes) => ollamaServer.set(changes));
-  handle('ollama:restart', async () => {
-    send(win, 'ollama:restarting', true);
-    try {
-      await ollamaServer.restart();
-    } finally {
-      send(win, 'ollama:restarting', false);
-      void monitor.poll();
-    }
-  });
+  handle('ollama:restart', () => restartOllama(() => ollamaServer.restart()));
   handle('harness:list', () => harnesses());
   handle('harness:install', async (id) => {
     const component = PROFILES[id]?.component;
@@ -315,6 +331,9 @@ function registerHandlers(): void {
   handle('updates:install', (id) => {
     void updater.update(id).catch(() => {});
   });
+  handle('updates:install-all', () => {
+    void updater.updateAll();
+  });
   handle('updates:skip', (id) => updater.skip(id));
   handle('updates:pin', (id, pinned) => updater.pin(id, pinned));
   handle('session:stored', () => sessions().stored());
@@ -327,6 +346,18 @@ function registerHandlers(): void {
   handle('session:set-model', (id, model) => sessions().setModel(id, model));
   handle('session:set-effort', (id, effort) => sessions().setEffort(id, effort));
   handle('session:set-mode', (id, modeId) => sessions().setMode(id, modeId));
+}
+
+// any restart may have installed a waiting Ollama update, so the updater looks again once Ollama is back
+async function restartOllama(restart: () => Promise<void>): Promise<void> {
+  send(win, 'ollama:restarting', true);
+  try {
+    await restart();
+  } finally {
+    send(win, 'ollama:restarting', false);
+    void monitor.poll();
+    void updater.check();
+  }
 }
 
 function sessions(): AgentHost {

@@ -111,6 +111,48 @@ describe('the updater', () => {
     expect(updater.state().entries).toEqual([]);
   });
 
+  it('applies an update a source sets up itself, with its progress and failure on the row', async () => {
+    let fail = true;
+    const ollama: UpdateSource = {
+      group: 'ollama',
+      check: async () => [{ id: 'ollama', name: 'Ollama', current: '0.40.2', available: '0.40.3', component: 'ollama' }],
+      apply: async () => {
+        if (fail) throw new Error('Ollama did not answer');
+      },
+    };
+    const installed: string[] = [];
+    const { updater } = setup([ollama], async (c) => void installed.push(c));
+    await updater.check();
+    await expect(updater.update('ollama')).rejects.toThrow('Ollama did not answer');
+    expect(updater.state().entries[0].state).toEqual({ status: 'failed', error: 'Ollama could not be updated.', detail: 'Ollama did not answer' });
+    fail = false;
+    await updater.update('ollama');
+    expect(updater.state().entries).toEqual([]);
+    expect(installed).toEqual([]);
+  });
+
+  it('updates all but the pinned, and restarts Ollama once the others are done', async () => {
+    const order: string[] = [];
+    const ollama: UpdateSource = {
+      group: 'ollama',
+      check: async () => [{ id: 'ollama', name: 'Ollama', current: '0.40.2', available: '0.40.3', component: 'ollama' }],
+      apply: async () => void order.push('ollama'),
+    };
+    const models = source('models', async () => [
+      { id: 'model:a', name: 'a', current: '1', available: '2', component: 'pull:a' },
+      { id: 'model:b', name: 'b', current: '1', available: '2', component: 'pull:b' },
+    ]);
+    const { updater } = setup([ollama, models], async (c) => {
+      await new Promise((r) => setTimeout(r, 20));
+      order.push(c);
+    });
+    await updater.check();
+    updater.pin('model:b', true);
+    await updater.updateAll();
+    expect(order).toEqual(['pull:a', 'ollama']);
+    expect(updater.state().entries.map((e) => e.id)).toEqual(['model:b']);
+  });
+
   it('keeps a failed update on its row', async () => {
     const { updater } = setup([source('harnesses', async () => [TOOL])], async () => {
       throw new Error('npm failed');

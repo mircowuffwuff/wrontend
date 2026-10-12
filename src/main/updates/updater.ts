@@ -14,13 +14,15 @@ export interface Found {
   current: string | null;
   available: string;
   bytes?: number;
-  // the engine component an update sets up again
+  // the engine component an update sets up again; for a source that applies its own updates, the name its progress goes by
   component: string;
 }
 
 export interface UpdateSource {
   group: UpdateGroup;
   check(): Promise<Found[]>;
+  // an update that is not an install through the engine -- Ollama's is a restart
+  apply?(found: Found): Promise<void>;
 }
 
 interface Choices {
@@ -93,12 +95,34 @@ export class Updater {
     return this.running;
   }
 
-  // the row goes once the update is set up; a failure stays on it, from the engine's report
+  // the row goes once the update is set up; a failure stays on it, from the engine's report or the source's own
   async update(id: string): Promise<void> {
     const [group, found] = this.lookup(id);
-    await this.install(found.component);
+    const source = this.sources.find((s) => s.group === group);
+    if (source?.apply) {
+      this.componentChanged(found.component, { status: 'installing', step: `Updating ${found.name}`, bytes: 0 });
+      try {
+        await source.apply(found);
+        this.componentChanged(found.component, { status: 'installed', version: found.available });
+      } catch (cause) {
+        const error = (cause as Error).message ?? String(cause);
+        this.componentChanged(found.component, { status: 'failed', error: `${found.name} could not be updated.`, detail: error });
+        throw cause;
+      }
+    } else {
+      await this.install(found.component);
+    }
     this.found.set(group, (this.found.get(group) ?? []).filter((f) => f.id !== id));
     this.changed();
+  }
+
+  // every row not pinned and not already updating. Ollama's restart waits for the others: it would cut off the model
+  // downloads started beside it
+  async updateAll(): Promise<void> {
+    const entries = this.state().entries.filter((e) => !e.pinned && e.state?.status !== 'installing');
+    const [last, first] = [entries.filter((e) => e.group === 'ollama'), entries.filter((e) => e.group !== 'ollama')];
+    await Promise.allSettled(first.map((e) => this.update(e.id)));
+    await Promise.allSettled(last.map((e) => this.update(e.id)));
   }
 
   skip(id: string): void {

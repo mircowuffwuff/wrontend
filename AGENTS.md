@@ -71,11 +71,10 @@ for transparency and tool usage attribution reasons: **any commit** that **inclu
 ```
 {commit message}
 
-co-authored-by: {agent}/{model} {version} <{email address}>
+co-authored-by: {agent}/{model with version} <{email address}>
 ```
 
 three concrete examples:
-
 
 ```
 fix(acp): split incoming records on newlines only
@@ -93,7 +92,7 @@ co-authored-by: Antigravity/Gemini 3.8 Flash <gemini@mircowuffwuff.com>
 co-authored-by: Codex/GPT 6.1 Sol <gpt@mircowuffwuff.com>
 ```
 
-what follows is a table of exact email's to pass for popular models. if the model that powers an agent is listed, the listed email is to be used, no matter what:
+what follows is a table of exact email's to pass for popular models. proper LLM model attribution in GitHub's UI can only be guaranteed this way. if the model that powers an agent is listed, the listed email is to be used, no matter what:
 
 | model | email address |
 | --- | --- |
@@ -101,6 +100,12 @@ what follows is a table of exact email's to pass for popular models. if the mode
 | Gemini | gemini@mircowuffwuff.com |
 | GPT | gpt@mircowuffwuff.com |
 | Qwen | qwen@mircowuffwuff.com |
+| DeepSeek | deepseek@mircowuffwuff.com |
+| Grok | grok@mircowuffwuff.com |
+| Muse | muse@mircowuffwuff.com |
+| MiMo | mimo@mircowuffwuff.com |
+| GLM | glm@mircowuffwuff.com |
+| Kimi | kimi@mircowuffwuff.com |
 
 ## public text
 

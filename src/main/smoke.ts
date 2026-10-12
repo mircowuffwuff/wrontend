@@ -480,6 +480,20 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
     await waitFor(`document.querySelectorAll('.group').length === 2`);
 
+    const search = (text: string) =>
+      js(`(() => {
+        const box = document.querySelector('.search input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+    await search('SIDEBAR');
+    await waitFor(`document.querySelectorAll('.group').length === 1 && document.querySelectorAll('.session-row').length === 1`);
+    await shot('20-sidebar-search');
+    await search('nothing like this');
+    await waitFor(`document.querySelector('.sessions .empty-hint')?.textContent.includes('No sessions match')`);
+    await js(`document.querySelector('.search input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await waitFor(`document.querySelectorAll('.group').length === 2 && document.querySelector('.search input').value === ''`);
+
     // a collapsed group stays collapsed across a reload
     await js(`document.querySelector('.group .group-label').click()`);
     await waitFor(`document.querySelector('.group').classList.contains('closed') && document.querySelectorAll('.session-row').length === 1`);

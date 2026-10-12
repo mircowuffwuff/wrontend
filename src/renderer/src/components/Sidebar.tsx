@@ -3,7 +3,7 @@ import { useDraft } from '../state/draft';
 import { useOllama } from '../state/ollama';
 import { useSessions } from '../state/sessions';
 import { useSettings } from '../state/settings';
-import { folderName, useSidebar } from '../state/sidebar';
+import { folderName, groupSessions, useSidebar } from '../state/sidebar';
 import { useUpdates } from '../state/updates';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
@@ -66,19 +66,18 @@ function OllamaStatusRow() {
 
 function SessionList() {
   const { sessions, order, activeId, open } = useSessions();
-  const { collapsed, toggleGroup } = useSidebar();
+  const { query, collapsed, toggleGroup } = useSidebar();
   if (order.length === 0) return <div className="empty-hint">Sessions appear here, grouped by folder.</div>;
-  // grouped by folder, the folder with the newest session first
-  const groups = new Map<string, string[]>();
-  for (const id of order) {
-    const { folderId } = sessions[id].info;
-    groups.set(folderId, [...(groups.get(folderId) ?? []), id]);
-  }
+  const groups = groupSessions(
+    order.map((id) => sessions[id].info),
+    query,
+  );
+  if (groups.length === 0) return <div className="empty-hint">No sessions match “{query.trim()}”.</div>;
   return (
     <>
-      {[...groups].map(([folderId, ids]) => {
-        const { folder } = sessions[ids[0]].info;
-        const closed = collapsed.includes(folderId);
+      {groups.map(({ folderId, folder, ids }) => {
+        // a search shows every match, collapsed or not
+        const closed = !query.trim() && collapsed.includes(folderId);
         return (
           <div key={folderId} className={`group${closed ? ' closed' : ''}`}>
             <div className="group-header">
@@ -145,6 +144,7 @@ export function NavButtons() {
 
 export function Sidebar() {
   const { activeId, open } = useSessions();
+  const query = useSidebar((s) => s.query);
   return (
     <aside className="sidebar">
       <div className="sidebar-top drag">
@@ -152,7 +152,14 @@ export function Sidebar() {
       </div>
       <label className="search">
         <Icon name="search" size={16} />
-        <input placeholder="Search" />
+        <input
+          placeholder="Search"
+          value={query}
+          onChange={(e) => useSidebar.getState().search(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') useSidebar.getState().search('');
+          }}
+        />
       </label>
       <button className={`nav-item${activeId === null ? ' active' : ''}`} onClick={() => open(null)}>
         <Icon name="plus" size={16} />

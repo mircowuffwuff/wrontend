@@ -161,6 +161,11 @@ export class DerivedModels implements Driver {
     await this.list();
   }
 
+  // whether Ollama's model list, as last read, has the model
+  has(name: string): boolean {
+    return this.present.has(name);
+  }
+
   get readOnly(): boolean {
     return !!this.options.readOnly;
   }

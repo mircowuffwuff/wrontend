@@ -293,6 +293,45 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await shot('14-harness-ready');
     await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   });
+  await step('15-model-trash', async () => {
+    const models = await js<{ name: string }[]>(`window.wrontend.invoke('ollama:models')`);
+    if (models.length === 0) {
+      skipped.push('15-model-trash: Ollama has no models, or is not running, so the picker has no row to delete');
+      return;
+    }
+    const openPicker = async () => {
+      await js(`document.querySelector('.model-trigger').closest('button').click()`);
+      await waitFor(`document.querySelector('.menu .menu-row .menu-action')`);
+    };
+    await openPicker();
+    // the trash button shows while its row is pointed at: a real mouse move, since a scripted one sets no :hover
+    const at = await js<{ x: number; y: number }>(`(() => {
+      const r = document.querySelector('.menu .menu-row').getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    })()`);
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: at.x, y: at.y });
+    await waitFor(`getComputedStyle(document.querySelector('.menu .menu-action')).opacity === '1'`);
+    await shot('15-model-menu');
+
+    await js(`document.querySelector('.menu .menu-action').click()`);
+    await waitFor(`document.querySelector('.confirm')?.textContent.includes(${JSON.stringify(models[0].name)})`);
+    await shot('15-model-confirm');
+    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Cancel').click()`);
+    await waitFor(`!document.querySelector('.confirm')`);
+    if (await js<boolean>(`!!document.querySelector('.setup-failed')`)) throw new Error('declining the confirmation still tried to delete');
+
+    // this run deletes nothing from the user's Ollama: going ahead shows the refusal as a failed delete
+    await openPicker();
+    await js(`document.querySelector('.menu .menu-action').click()`);
+    await waitFor(`document.querySelector('.confirm')`);
+    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Delete Model').click()`);
+    await waitFor(`document.querySelector('.setup-failed')?.textContent.includes('This run deletes nothing from Ollama.')`);
+    await shot('15-model-delete-failed');
+    const after = await js<{ name: string }[]>(`window.wrontend.invoke('ollama:models')`);
+    if (after.length !== models.length) throw new Error('a model went missing in a run that deletes nothing');
+    await js(`document.querySelector('.setup-failed button[aria-label="Dismiss"]').click()`);
+    await waitFor(`!document.querySelector('.setup-failed')`);
+  });
 
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));

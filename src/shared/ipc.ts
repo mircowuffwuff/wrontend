@@ -21,6 +21,8 @@ export interface InvokeMap {
   // a model was picked: its copy with a renderer is made now, where it needs one, rather than on the first request
   'ollama:prepare': { args: [name: string]; result: void };
   'ollama:show': { args: [name: string]; result: ModelDetails | null };
+  // deletes a model from Ollama with wrontend's copy of it; refused while a session is working with it
+  'ollama:delete': { args: [name: string]; result: void };
   // the address wrontend uses when Settings names none
   'ollama:default-address': { args: []; result: string };
   'ollama:server': { args: []; result: OllamaServerState };

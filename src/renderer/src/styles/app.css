@@ -412,6 +412,47 @@ button.chip:hover {
   color: var(--muted);
 }
 
+/* a menu row: the item, and at its end a button that acts on it, shown while the row is pointed at */
+.menu-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--leaf-sm);
+}
+.menu-row:hover {
+  background: var(--hover);
+}
+.menu-row.selected {
+  background: var(--selected);
+}
+.menu-row .menu-item {
+  flex: 1;
+  min-width: 0;
+  background: none;
+}
+.menu-action {
+  flex: none;
+  margin-right: 6px;
+  opacity: 0;
+}
+.menu-row:hover .menu-action,
+.menu-action:focus-visible {
+  opacity: 1;
+}
+.menu-action.danger:hover {
+  color: var(--remove);
+}
+.menu-action[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+.menu-row:hover .menu-action[aria-disabled='true'] {
+  opacity: 0.4;
+}
+.menu-action[aria-disabled='true']:hover {
+  background: none;
+  color: var(--muted);
+}
+
 /* the model picker's word on a model's reasoning, under its sizes */
 .reasoning-note {
   display: flex;

@@ -85,6 +85,11 @@ export class AgentHost {
     await this.get(id).agent?.cancel();
   }
 
+  // the titles of the sessions whose agent is working with this model right now
+  workingWith(model: string): string[] {
+    return [...this.sessions.values()].filter((e) => e.agent?.running && e.info.model === model).map((e) => e.info.title);
+  }
+
   answer(id: string, requestId: string, optionId: string | null): void {
     this.get(id).agent?.answer(requestId, optionId);
   }

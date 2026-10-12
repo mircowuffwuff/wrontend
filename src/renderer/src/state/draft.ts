@@ -31,7 +31,8 @@ function save(r: Remembered): void {
 interface DraftState extends Remembered {
   folder: string | null;
   setHarness(harness: string): void;
-  setModel(model: string): void;
+  // null when the model is gone from Ollama
+  setModel(model: string | null): void;
   setEffort(effort: Effort): void;
   setFolder(folder: string): void;
 }

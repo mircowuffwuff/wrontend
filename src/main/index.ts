@@ -4,7 +4,7 @@ import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
 import type { HarnessEntry } from '@shared/components';
 import type { Settings } from '@shared/settings';
 import { CATALOG } from './components/catalog';
-import { DerivedModels, routeModel } from './components/derived';
+import { deleteModel, DerivedModels, routeModel } from './components/derived';
 import { ComponentEngine } from './components/engine';
 import { fakeNpm } from './components/fake-npm';
 import { NpmDriver } from './components/npm-driver';
@@ -218,6 +218,16 @@ function registerHandlers(): void {
       return await ollama.show(name);
     } catch {
       return null;
+    }
+  });
+  handle('ollama:delete', async (name) => {
+    const working = host?.workingWith(name) ?? [];
+    if (working.length > 0) throw new Error(`${name} is in use by ${working.map((t) => `“${t}”`).join(', ')}.`);
+    try {
+      await deleteModel(components, derived, ollama, name);
+    } finally {
+      send(win, 'ollama:models-changed', undefined);
+      void monitor.poll();
     }
   });
   handle('ollama:default-address', () => resolveBaseUrl(process.env.OLLAMA_HOST));

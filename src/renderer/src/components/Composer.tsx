@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge';
 import type { ComponentState, HarnessEntry } from '@shared/components';
-import type { ModelReasoning } from '@shared/ollama';
+import type { ModelEntry, ModelReasoning } from '@shared/ollama';
+import { confirm } from '../state/confirm';
 import { useDraft } from '../state/draft';
 import { isReady, useHarnesses } from '../state/harnesses';
 import { useOllama } from '../state/ollama';
 import { composeMessage, useQuotes, type QuoteCard } from '../state/quotes';
 import { useSessions, type SessionView } from '../state/sessions';
+import { errorText } from '../state/settings';
 import { Icon } from './Icon';
 import { ContextLeaves, Leaf } from './Leaf';
 import { Menu } from './Menu';
@@ -127,8 +129,44 @@ function ReasoningNote({ reasoning }: { reasoning: ModelReasoning }) {
   );
 }
 
+// why a model cannot be deleted now, or null when it can
+function deleteRefused(entry: ModelEntry): string | null {
+  const working = Object.values(useSessions.getState().sessions).some((s) => s.running && s.info.model === entry.name);
+  if (working) return 'A session is working with this model';
+  if (entry.reasoning.status === 'derived' && entry.reasoning.state.status === 'installing') return 'A copy of this model is being made';
+  return null;
+}
+
+// the trash button: says what goes and which sessions need another model, and deletes only on the dialog's red button.
+// resolves to an error to show, or null
+async function deleteModel(entry: ModelEntry): Promise<string | null> {
+  const users = Object.values(useSessions.getState().sessions)
+    .filter((s) => s.info.model === entry.name)
+    .map((s) => s.info.title);
+  const copy = entry.reasoning.status === 'derived' && entry.reasoning.state.status === 'installed';
+  const what = `${entry.name} is deleted from Ollama${copy ? ', with the copy wrontend made of it to keep its reasoning' : ''}.`;
+  const ok = await confirm({
+    title: 'Delete Model?',
+    message:
+      users.length === 0
+        ? `${what} Its files are removed unless another model shares them.`
+        : `${what} ${users.length === 1 ? 'This session uses it, and needs another model for its next message:' : 'These sessions use it, and need another model for their next message:'}`,
+    items: users,
+    action: 'Delete Model',
+  });
+  if (!ok) return null;
+  try {
+    await bridge.invoke('ollama:delete', entry.name);
+  } catch (cause) {
+    return `${entry.name} could not be deleted. ${errorText(cause)}`;
+  }
+  if (useDraft.getState().model === entry.name) useDraft.getState().setModel(null);
+  return null;
+}
+
 export function Composer({ session }: { session: SessionView | null }) {
   const [text, setText] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const models = useOllama((s) => s.models);
   const loaded = useOllama((s) => s.status?.loaded);
@@ -197,6 +235,19 @@ export function Composer({ session }: { session: SessionView | null }) {
           </div>
         )}
         {fresh && harness?.state.status === 'failed' && <SetupFailed harness={harness} />}
+        {deleteError && (
+          <div className="error-block setup-failed">
+            <div className="setup-failed-row">
+              <span className="tool-summary">
+                <Leaf size={9} color="var(--remove)" />
+                <span>{deleteError}</span>
+              </span>
+              <button className="icon-button small" aria-label="Dismiss" onClick={() => setDeleteError(null)}>
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+          </div>
+        )}
         {permission && session && (
           <PermissionPrompt
             key={permission.requestId}
@@ -284,6 +335,16 @@ ${c.reply}` : c.quote}>
                 </>
               ),
               selected: m.name === model,
+              action: {
+                icon: 'trash',
+                label: 'Delete Model',
+                danger: true,
+                refused: deleteRefused(m) ?? undefined,
+                run: () => {
+                  setDeleteError(null);
+                  void deleteModel(m).then(setDeleteError);
+                },
+              },
             }))}
             onPick={(name) => {
               // a copy with a renderer, where the model needs one, is made now rather than on the first request

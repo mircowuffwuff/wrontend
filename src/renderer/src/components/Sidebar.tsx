@@ -2,6 +2,7 @@ import { outdated } from '@shared/updates';
 import { useOllama } from '../state/ollama';
 import { useSessions } from '../state/sessions';
 import { useSettings } from '../state/settings';
+import { useSidebar } from '../state/sidebar';
 import { useUpdates } from '../state/updates';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
@@ -97,22 +98,37 @@ function SessionList() {
   );
 }
 
-export function Sidebar() {
-  const { activeId, open } = useSessions();
+// Toggle sidebar, Back and Forward: atop the sidebar, and in the session's top bar while the sidebar is hidden
+export function NavButtons() {
   const canBack = useSessions((s) => s.history.past.length > 0);
   const canForward = useSessions((s) => s.history.future.length > 0);
+  const hidden = useSidebar((s) => s.hidden);
+  return (
+    <div className="nav-buttons">
+      <button
+        className="icon-button"
+        aria-label={hidden ? 'Show Sidebar' : 'Hide Sidebar'}
+        title={hidden ? 'Show sidebar' : 'Hide sidebar'}
+        onClick={() => useSidebar.getState().toggle()}
+      >
+        <Icon name="sidebar" />
+      </button>
+      <button className="icon-button" aria-label="Back" title="Back" disabled={!canBack} onClick={() => useSessions.getState().back()}>
+        <Icon name="back" />
+      </button>
+      <button className="icon-button" aria-label="Forward" title="Forward" disabled={!canForward} onClick={() => useSessions.getState().forward()}>
+        <Icon name="forward" />
+      </button>
+    </div>
+  );
+}
+
+export function Sidebar() {
+  const { activeId, open } = useSessions();
   return (
     <aside className="sidebar">
       <div className="sidebar-top drag">
-        <button className="icon-button" aria-label="Toggle sidebar">
-          <Icon name="sidebar" />
-        </button>
-        <button className="icon-button" aria-label="Back" title="Back" disabled={!canBack} onClick={() => useSessions.getState().back()}>
-          <Icon name="back" />
-        </button>
-        <button className="icon-button" aria-label="Forward" title="Forward" disabled={!canForward} onClick={() => useSessions.getState().forward()}>
-          <Icon name="forward" />
-        </button>
+        <NavButtons />
       </div>
       <label className="search">
         <Icon name="search" size={16} />

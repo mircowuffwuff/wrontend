@@ -8,7 +8,7 @@ import { Menu } from './components/Menu';
 import { ModelBrowser } from './components/ModelBrowser';
 import { SettingsDialog } from './components/Settings';
 import { StatsCard } from './components/StatsCard';
-import { Sidebar } from './components/Sidebar';
+import { NavButtons, Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
 import { UpdaterPanel } from './components/Updater';
 import { startPullSync, useBrowser } from './state/browser';
@@ -17,6 +17,7 @@ import { startHarnessSync, useHarnesses } from './state/harnesses';
 import { startOllamaSync } from './state/ollama';
 import { startSessionSync, useSessions } from './state/sessions';
 import { startSettingsSync, useSettings } from './state/settings';
+import { useSidebar } from './state/sidebar';
 import { startUpdatesSync, useUpdates } from './state/updates';
 
 export function App() {
@@ -58,12 +59,14 @@ export function App() {
   const settingsOpen = useSettings((s) => s.section !== null);
   const browserOpen = useBrowser((s) => s.open);
   const updaterOpen = useUpdates((s) => s.open);
+  const sidebarHidden = useSidebar((s) => s.hidden);
 
   return (
-    <div className="app">
-      <Sidebar />
+    <div className={`app${sidebarHidden ? ' sidebar-hidden' : ''}`}>
+      {!sidebarHidden && <Sidebar />}
       <main className="main">
         <header className="top-bar drag">
+          {sidebarHidden && <NavButtons />}
           {session && (
             <>
               <span className="harness-icon muted" title={harnessName}>

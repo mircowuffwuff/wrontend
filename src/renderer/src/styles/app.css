@@ -55,6 +55,9 @@ button {
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   height: 100%;
 }
+.app.sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
 
 /* sidebar */
 
@@ -72,6 +75,16 @@ button {
   gap: 4px;
   height: var(--top-bar);
   padding: 0 10px;
+}
+
+.nav-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* in the session's top bar, while the sidebar is hidden, the buttons keep the place they have atop it */
+.top-bar .nav-buttons {
+  margin-left: -8px;
 }
 
 .icon-button {

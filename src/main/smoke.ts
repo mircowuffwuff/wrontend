@@ -494,6 +494,17 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }))`);
     await waitFor(`document.querySelectorAll('.session-row')[0].classList.contains('active') && !${back}.disabled`);
     await shot('20-sidebar-history');
+
+    // hidden, the sidebar leaves its buttons in the top bar
+    await js(`[...document.querySelectorAll('.sidebar .nav-item')].find((b) => b.textContent === 'New').click()`);
+    await waitFor(`document.querySelector('.greeting')`);
+    await js(`document.querySelector('.sidebar-top button[aria-label="Hide Sidebar"]').click()`);
+    await waitFor(`!document.querySelector('.sidebar') && document.querySelector('.top-bar button[aria-label="Show Sidebar"]')`);
+    await js(`document.querySelector('.top-bar button[aria-label="Back"]').click()`);
+    await waitFor(`document.querySelector('.top-bar .session-title')`);
+    await shot('20-sidebar-hidden');
+    await js(`document.querySelector('.top-bar button[aria-label="Show Sidebar"]').click()`);
+    await waitFor(`document.querySelector('.sidebar')`);
   });
 
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;

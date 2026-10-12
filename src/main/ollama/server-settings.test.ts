@@ -80,6 +80,23 @@ describe('Ollama server settings', () => {
     expect(m.state.launched[0]).toMatchObject({ path: server.path, args: ['serve'] });
   });
 
+  it('waits longer for an Ollama that installs an update before it answers, when asked to', async () => {
+    // the started app runs the installer first: Ollama answers 400 ms after the launch
+    const slow = () => {
+      const m = machine([app, server]);
+      let launchedAt = 0;
+      const launch = m.processes.launch;
+      m.processes.launch = (...args) => {
+        launchedAt = Date.now();
+        launch(...args);
+      };
+      const reachable = async () => (launchedAt ? Date.now() - launchedAt >= 400 : m.state.running.length > 0);
+      return new OllamaServer({ environment: memoryEnvironment(), processes: m.processes, baseUrl: () => 'http://127.0.0.1:11434', reachable, waitMs: WAITS });
+    };
+    await expect(slow().restart()).rejects.toThrow(/did not answer/);
+    await slow().restart(2000);
+  });
+
   it('starts the installed app when no Ollama runs, and says so when none is installed', async () => {
     const m = machine([]);
     const ollama = new OllamaServer({ environment: memoryEnvironment(), processes: m.processes, baseUrl: () => 'http://127.0.0.1:11434', reachable: m.reachable, waitMs: WAITS });

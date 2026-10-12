@@ -78,12 +78,13 @@ export class OllamaServer {
     this.baseline = await this.read().catch(() => this.baseline);
   }
 
-  restart(): Promise<void> {
-    this.restarting ??= this.doRestart().finally(() => (this.restarting = null));
+  // startMs: how long Ollama has to answer again -- longer while it installs an update first
+  restart(startMs?: number): Promise<void> {
+    this.restarting ??= this.doRestart(startMs).finally(() => (this.restarting = null));
     return this.restarting;
   }
 
-  private async doRestart(): Promise<void> {
+  private async doRestart(startMs?: number): Promise<void> {
     const unsupported = this.unsupported();
     if (unsupported) throw new Error(unsupported);
     const processes = this.o.processes!;
@@ -100,7 +101,7 @@ export class OllamaServer {
     const target = appPath ? { path: appPath, args: ['--hide'] } : serverPath ? { path: serverPath, args: ['serve'] } : null;
     if (!target) throw new Error('wrontend found no Ollama to start: neither a running one nor its app where Ollama installs it.');
 
-    const waits = this.o.waitMs ?? { stop: 15_000, start: 60_000, poll: 250 };
+    const waits = { ...(this.o.waitMs ?? { stop: 15_000, start: 60_000, poll: 250 }), ...(startMs ? { start: startMs } : {}) };
     const pids = [...apps, ...servers].map((p) => p.pid);
     if (pids.length) {
       await processes.kill(pids);

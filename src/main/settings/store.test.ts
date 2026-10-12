@@ -1,11 +1,11 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '@shared/settings';
+import { tempFolder } from '../temp-folder';
 import { SettingsStore } from './store';
 
-const file = () => join(mkdtempSync(join(tmpdir(), 'wrontend-settings-')), 'settings.json');
+const file = () => join(tempFolder('wrontend-settings-'), 'settings.json');
 
 describe('the settings file', () => {
   it('starts from the defaults when there is no file', () => {

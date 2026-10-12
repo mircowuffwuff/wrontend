@@ -1,5 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { UpdatesState } from '@shared/updates';
@@ -7,6 +6,7 @@ import { ComponentEngine } from '../components/engine';
 import { fakeNpm, type FakeNpmOptions } from '../components/fake-npm';
 import { NpmDriver, type CatalogEntry } from '../components/npm-driver';
 import { ComponentStore } from '../components/store';
+import { tempFolder } from '../temp-folder';
 import { npmUpdates } from './npm-source';
 import { Updater, type Found, type UpdateSource } from './updater';
 
@@ -17,7 +17,7 @@ function source(group: UpdateSource['group'], check: () => Promise<Found[]>): Up
 }
 
 function setup(sources: UpdateSource[], install: (component: string) => Promise<void> = async () => {}) {
-  const file = join(mkdtempSync(join(tmpdir(), 'wrontend-updates-')), 'updates.json');
+  const file = join(tempFolder('wrontend-updates-'), 'updates.json');
   const states: UpdatesState[] = [];
   const updater = new Updater(sources, file, install, (s) => states.push(s));
   return { file, updater, states };
@@ -168,7 +168,7 @@ describe('the updater', () => {
 const ENTRY: CatalogEntry = { id: 'tool', name: 'Tool', npm: '@scope/tool', bin: 'tool', floor: '1.0.0' };
 
 function npmSetup(fake: FakeNpmOptions) {
-  const root = mkdtempSync(join(tmpdir(), 'wrontend-components-'));
+  const root = tempFolder('wrontend-components-');
   const store = new ComponentStore(join(root, 'components'));
   const options = { ...fake };
   const npm = new NpmDriver(store, [ENTRY], { findNpm: async () => fakeNpm(join(root, 'npm'), options) });

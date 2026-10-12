@@ -5,20 +5,19 @@
 import { spawn } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtempSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import { describe, expect, it } from 'vitest';
 import type { SessionEvent } from '@shared/session';
 import { installedProgram } from '../components/testing';
 import { ProxyServer } from '../proxy/server';
+import { tempFolder } from '../temp-folder';
 import { AgentHost } from './agent-host';
 import { claudeCode } from './profiles';
 
 const on = process.env.WRONTEND_HARNESS_TESTS === '1';
-const temp = (prefix: string) => realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
+const temp = (prefix: string) => realpathSync.native(tempFolder(prefix));
 
 function connect(program: string, home: string, folder: string) {
   const launch = claudeCode.launch({ proxyUrl: 'http://127.0.0.1:1/s/dead', harnessHome: home, program });

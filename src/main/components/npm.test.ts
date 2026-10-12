@@ -1,15 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { tempFolder as temp } from '../temp-folder';
 import { bootstrapNpm, findSystemNpm, InstallError, runNpm } from './npm';
 import { ComponentStore } from './store';
-
-const temp = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
 
 // a tarball laid out as npm publishes one: everything under package/
 function npmTarball(version: string): Buffer {

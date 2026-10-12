@@ -1,6 +1,7 @@
 // the headless smoke test: drives the real window, hidden, through a scripted session with the fake agent.
 // started with --smoke=<folder>; every step leaves a screenshot there, and report.json says what passed
 
+import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,10 +14,12 @@ export function smokeFolder(): string | null {
 }
 
 // what the smoke test needs set before the app is ready: its own data folder -- the user's sessions stay untouched --
-// the fake agent, and an autoprompt in a throwaway project folder
+// the fake agent, and an autoprompt in a throwaway project folder. both folders go when the app exits
 export function prepareSmoke(): void {
-  app.setPath('userData', realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-data-'))));
+  const data = realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-data-')));
   const project = realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-')));
+  removeAfterExit([data, project]);
+  app.setPath('userData', data);
   process.env.WRONTEND_HARNESS = 'fake';
   process.env.WRONTEND_AUTOPROMPT = `${project}|smoke-model|Please make the readme say what wrontend is.`;
 }
@@ -28,7 +31,7 @@ interface Step {
   error?: string;
 }
 
-export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
+export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: () => void): Promise<void> {
   mkdirSync(out, { recursive: true });
   const steps: Step[] = [];
   // parts of a step this machine cannot exercise, said in the report rather than passed in silence
@@ -468,5 +471,30 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));
   console.log(`wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`);
+  // app.exit skips will-quit, where the harnesses are stopped otherwise; one left running would keep the project folder
+  stopHarnesses();
   app.exit(passed ? 0 : 1);
+}
+
+// Electron keeps files open in its data folder for as long as it runs -- its caches, local storage, cookies -- and on
+// Windows an open file cannot be deleted, so the app cannot remove that folder itself. a small process left behind waits
+// for the app to exit, however it exits, and removes the folders then. the processes Electron and the harnesses start can
+// outlast the app by a moment, so the removal retries; a folder that still will not go stays where it is
+function removeAfterExit(folders: string[]): void {
+  const script = `
+    const { rmSync } = require('node:fs');
+    const [pid, ...folders] = process.argv.slice(1);
+    const running = () => { try { process.kill(Number(pid), 0); return true; } catch { return false; } };
+    const remove = () => {
+      for (const folder of folders) try { rmSync(folder, { recursive: true, force: true, maxRetries: 10 }); } catch {}
+    };
+    const wait = () => (running() ? setTimeout(wait, 250) : remove());
+    wait();
+  `;
+  spawn(process.execPath, ['-e', script, String(process.pid), ...folders], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  }).unref();
 }

@@ -202,7 +202,7 @@ function createWindow(): void {
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
 
-  if (smoke) win.webContents.once('did-finish-load', () => void runSmoke(win!, smoke));
+  if (smoke) win.webContents.once('did-finish-load', () => void runSmoke(win!, smoke, () => host?.disposeAll()));
 
   const capture = process.env.WRONTEND_CAPTURE;
   if (capture) captureOnce(win, capture);

@@ -1,9 +1,7 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ModelDetails, ModelSummary } from '@shared/ollama';
 import type { CreateRequest } from '../ollama/client';
+import { tempFolder } from '../temp-folder';
 import { deleteModel, derivedId, derivedName, DerivedModels, isDerived, routeModel, type DeletingOllama, type DerivedOllama } from './derived';
 import { ComponentEngine } from './engine';
 import { RENDERERS, rendererFor } from './renderers';
@@ -75,7 +73,7 @@ function fakeOllama(version = '0.40.3') {
 function setup(options: { enabled?: boolean; readOnly?: boolean; version?: string } = {}) {
   const fake = fakeOllama(options.version);
   fake.add(HF, 'aaaaaaaaaaaaaaaa', qwen38);
-  const store = new ComponentStore(mkdtempSync(join(tmpdir(), 'wrontend-derived-')));
+  const store = new ComponentStore(tempFolder('wrontend-derived-'));
   const settings = { enabled: options.enabled ?? true };
   const derived = new DerivedModels(fake.ollama, store, RENDERERS, { enabled: () => settings.enabled, readOnly: options.readOnly, listMs: 0 });
   const engine = new ComponentEngine([derived]);

@@ -2,8 +2,7 @@
 // off by default -- WRONTEND_LIVE=1 turns it on, and WRONTEND_MODEL names the Ollama model to run, which it requires: no model
 // of any one machine is assumed
 
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RequestStats } from '@shared/proxy';
@@ -11,6 +10,7 @@ import type { SessionEvent } from '@shared/session';
 import { installedProgram } from '../components/testing';
 import { resolveBaseUrl } from '../ollama/client';
 import { ProxyServer } from '../proxy/server';
+import { tempFolder } from '../temp-folder';
 import { AgentHost } from './agent-host';
 
 const live = process.env.WRONTEND_LIVE === '1';
@@ -21,8 +21,8 @@ describe.skipIf(!live)('Claude Code end to end', () => {
   it(
     'runs a turn with a tool call and a permission request',
     async () => {
-      const folder = mkdtempSync(join(tmpdir(), 'wrontend-live-'));
-      const dataDir = mkdtempSync(join(tmpdir(), 'wrontend-data-'));
+      const folder = tempFolder('wrontend-live-');
+      const dataDir = tempFolder('wrontend-data-');
       const proxy = new ProxyServer(() => resolveBaseUrl(process.env.OLLAMA_HOST));
       await proxy.start();
 

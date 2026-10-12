@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tempFolder } from '../temp-folder';
 import { offeredVersion, ollamaUpdates, waitingInstaller, type OllamaUpdateOptions } from './ollama-source';
 
 function options(overrides: Partial<OllamaUpdateOptions>): OllamaUpdateOptions {
@@ -16,7 +16,7 @@ function options(overrides: Partial<OllamaUpdateOptions>): OllamaUpdateOptions {
 
 describe('a waiting installer', () => {
   it('is an OllamaSetup.exe in a hash folder of updates_v2', () => {
-    const folder = join(mkdtempSync(join(tmpdir(), 'wrontend-ollama-')), 'updates_v2');
+    const folder = join(tempFolder('wrontend-ollama-'), 'updates_v2');
     expect(waitingInstaller(folder)).toBeNull();
     expect(waitingInstaller(null)).toBeNull();
     mkdirSync(join(folder, 'aaaa'), { recursive: true });

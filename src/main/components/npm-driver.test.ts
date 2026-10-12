@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ComponentState } from '@shared/components';
+import { tempFolder } from '../temp-folder';
 import { ComponentEngine } from './engine';
 import { NpmDriver, latestFrom, type CatalogEntry } from './npm-driver';
 import { fakeNpm, type FakeNpmOptions } from './fake-npm';
@@ -12,7 +12,7 @@ import { compareVersions } from './version';
 const ENTRY: CatalogEntry = { id: 'tool', name: 'Tool', npm: '@scope/tool', bin: 'tool', floor: '1.2.0' };
 
 function setup(fake: FakeNpmOptions) {
-  const root = mkdtempSync(join(tmpdir(), 'wrontend-components-'));
+  const root = tempFolder('wrontend-components-');
   const store = new ComponentStore(join(root, 'components'));
   const states: ComponentState[] = [];
   const options = { ...fake };
@@ -112,7 +112,7 @@ describe('the npm driver', () => {
   });
 
   it('clears what a run that ended mid-install left behind', () => {
-    const root = mkdtempSync(join(tmpdir(), 'wrontend-components-'));
+    const root = tempFolder('wrontend-components-');
     mkdirSync(join(root, 'tool', '1.3.0.partial', 'node_modules'), { recursive: true });
     mkdirSync(join(root, 'tool', '1.2.0'), { recursive: true });
     new NpmDriver(new ComponentStore(root), [ENTRY]);

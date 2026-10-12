@@ -9,9 +9,10 @@
 // records are written whole and atomically, so a crash mid-write leaves the previous version, never half a file
 
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { StoredSession } from '@shared/session';
+import type { SessionUsage, UsageRecord } from '@shared/usage';
 
 export interface FolderRecord {
   id: string;
@@ -70,6 +71,37 @@ export class SessionStore {
     const dir = this.sessionDir(session.info.id);
     mkdirSync(dir, { recursive: true });
     writeWhole(join(dir, 'session.json'), session);
+  }
+
+  // one line per record, never rewritten. a crash mid-append can leave half a last line, which reading skips
+  appendUsage(id: string, record: UsageRecord): void {
+    const dir = this.sessionDir(id);
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, USAGE), `${JSON.stringify(record)}\n`);
+  }
+
+  // every session's usage, deleted sessions' included
+  usage(): SessionUsage[] {
+    const all: SessionUsage[] = [];
+    for (const sessionId of directories(this.dir)) {
+      let text: string;
+      try {
+        text = readFileSync(join(this.dir, sessionId, USAGE), 'utf8');
+      } catch {
+        continue;
+      }
+      const records: UsageRecord[] = [];
+      for (const line of text.split('\n')) {
+        if (!line) continue;
+        try {
+          records.push(JSON.parse(line) as UsageRecord);
+        } catch {
+          // half a line from a crash mid-append
+        }
+      }
+      all.push({ sessionId, records });
+    }
+    return all;
   }
 
   // everything the session keeps goes except its usage, which the stats go on counting. a session that used nothing

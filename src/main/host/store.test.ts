@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ProxyServer } from '../proxy/server';
@@ -81,6 +81,33 @@ describe('sessions on disk', () => {
 
   it('refuses an id that could name a path outside its directory', () => {
     expect(() => new SessionStore(tempFolder('wrontend-sessions-')).remove('..')).toThrow();
+  });
+});
+
+describe('usage on disk', () => {
+  const stats = { kind: 'main', model: 'm', status: 200, inputTokens: 10, outputTokens: 6, firstTokenMs: 5, generationMs: 50, historyHasThinking: false, error: null } as const;
+
+  it('appends a line per record and reads them back per session, a deleted session included', () => {
+    const dir = tempFolder('wrontend-sessions-');
+    const store = new SessionStore(dir);
+    store.save(record(ID, 'f'));
+    store.appendUsage(ID, { at: 1, harness: 'fake', folderId: 'f', type: 'prompt', model: 'm' });
+    store.appendUsage(ID, { at: 2, harness: 'fake', folderId: 'f', type: 'request', stats });
+    store.appendUsage(OTHER, { at: 3, harness: 'fake', folderId: 'f', type: 'prompt', model: 'm' });
+    store.remove(ID);
+    const usage = new SessionStore(dir).usage().sort((a, b) => a.records[0].at - b.records[0].at);
+    expect(usage.map((u) => [u.sessionId, u.records.map((r) => r.type)])).toEqual([
+      [ID, ['prompt', 'request']],
+      [OTHER, ['prompt']],
+    ]);
+  });
+
+  it('skips half a line left by a crash mid-append', () => {
+    const dir = tempFolder('wrontend-sessions-');
+    const store = new SessionStore(dir);
+    store.appendUsage(ID, { at: 1, harness: 'fake', folderId: 'f', type: 'prompt', model: 'm' });
+    appendFileSync(join(dir, ID, 'usage.jsonl'), '{"at":2,"harn');
+    expect(store.usage()[0].records).toHaveLength(1);
   });
 });
 

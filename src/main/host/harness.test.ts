@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import { describe, expect, it } from 'vitest';
@@ -15,6 +16,7 @@ import { ProxyServer } from '../proxy/server';
 import { tempFolder } from '../temp-folder';
 import { AgentHost } from './agent-host';
 import { claudeCode } from './profiles';
+import { SessionStore } from './store';
 
 const on = process.env.WRONTEND_HARNESS_TESTS === '1';
 const temp = (prefix: string) => realpathSync.native(tempFolder(prefix));
@@ -149,6 +151,15 @@ describe.skipIf(!on)('Claude Code against a fake model', () => {
     expect(main.some((r) => r.messages >= 3)).toBe(true);
     // title requests are answered by the proxy and never reach the model
     expect(log.some((r) => r.system.includes('You are naming'))).toBe(false);
+
+    // both prompts and the measured main requests are in the usage log, which outlives the session
+    second.delete(info.id);
+    const usage = new SessionStore(join(dataDir, 'sessions')).usage();
+    expect(usage.map((u) => u.sessionId)).toEqual([info.id]);
+    const records = usage[0].records;
+    expect(records.filter((r) => r.type === 'prompt')).toHaveLength(2);
+    expect(records.some((r) => r.type === 'request' && r.stats.kind === 'main' && r.stats.outputTokens === 6)).toBe(true);
+    expect(records.every((r) => r.harness === 'claude-code' && r.folderId === info.folderId)).toBe(true);
 
     second.disposeAll();
     await proxy.stop();

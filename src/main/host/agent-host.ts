@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import type { BackgroundPolicy, Effort } from '@shared/proxy';
+import type { BackgroundPolicy, Effort, RequestStats } from '@shared/proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, SessionInfo, SessionModes, StoredSession } from '@shared/session';
 import type { ProxyServer } from '../proxy/server';
 import { PROFILES } from './profiles';
@@ -86,6 +86,7 @@ export class AgentHost {
       this.persist(entry);
     }
     const agent = await this.wake(entry);
+    this.recordUsage(entry, { type: 'prompt', model: entry.info.model });
     void agent.prompt(text);
   }
 
@@ -168,9 +169,10 @@ export class AgentHost {
     const { info } = entry;
     const profile = PROFILES[info.harness];
     if (!profile) throw new Error(`no harness called ${info.harness}`);
-    const route = this.proxy.register({ model: info.model, effort: info.effort, backgroundPolicy: this.backgroundPolicy }, (stats) =>
-      this.emit({ sessionId: info.id, type: 'stats', stats }),
-    );
+    const route = this.proxy.register({ model: info.model, effort: info.effort, backgroundPolicy: this.backgroundPolicy }, (stats) => {
+      this.recordUsage(entry, { type: 'request', stats });
+      this.emit({ sessionId: info.id, type: 'stats', stats });
+    });
     const agent = new AgentSession({
       id: info.id,
       profile,
@@ -208,6 +210,11 @@ export class AgentHost {
   private persist(entry: Entry): void {
     const { folder: _path, ...info } = entry.info;
     this.store.save({ info, harnessSessionId: entry.harnessSessionId, modes: entry.modes, items: entry.items });
+  }
+
+  private recordUsage(entry: Entry, record: { type: 'prompt'; model: string } | { type: 'request'; stats: RequestStats }): void {
+    const { id, harness, folderId } = entry.info;
+    this.store.appendUsage(id, { at: Date.now(), harness, folderId, ...record });
   }
 
   private get(id: string): Entry {

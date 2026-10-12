@@ -12,6 +12,7 @@ import { useOllama } from '../state/ollama';
 import { composeMessage, useQuotes, type QuoteCard } from '../state/quotes';
 import { useSessions, type SessionView } from '../state/sessions';
 import { errorText } from '../state/settings';
+import { HarnessIcon } from './HarnessIcon';
 import { Icon } from './Icon';
 import { ContextLeaves, Leaf } from './Leaf';
 import { Menu } from './Menu';
@@ -71,7 +72,7 @@ function HarnessChip() {
       title="The harness is chosen before the first prompt and stays for the session"
       trigger={
         <>
-          <Icon name="harness" size={14} />
+          <HarnessIcon harness={current?.id} size={14} />
           {trigger}
         </>
       }

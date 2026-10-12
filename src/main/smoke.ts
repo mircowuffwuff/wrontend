@@ -479,6 +479,7 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     win.webContents.reload();
     await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
     await waitFor(`document.querySelectorAll('.group').length === 2`);
+    if (!(await js<boolean>(`document.querySelectorAll('.session-row .row-harness svg').length === 2`))) throw new Error('a session row is missing its harness icon');
 
     const search = (text: string) =>
       js(`(() => {

@@ -686,6 +686,17 @@ button.chip:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* which harness runs the session, in its own shape */
+.row-harness {
+  display: inline-grid;
+  flex-shrink: 0;
+  color: var(--muted);
+  opacity: 0.7;
+}
+.session-row:hover .row-harness,
+.session-row.active .row-harness {
+  opacity: 1;
+}
 
 /* transcript */
 

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { bridge } from './bridge';
 import { Composer } from './components/Composer';
 import { ConfirmDialog } from './components/Confirm';
+import { HarnessIcon } from './components/HarnessIcon';
 import { Icon } from './components/Icon';
 import { Leaf } from './components/Leaf';
 import { Menu } from './components/Menu';
@@ -70,7 +71,7 @@ export function App() {
           {session && (
             <>
               <span className="harness-icon muted" title={harnessName}>
-                <Icon name="harness" size={18} />
+                <HarnessIcon harness={session.info.harness} size={18} />
               </span>
               <Menu
                 placement="below"

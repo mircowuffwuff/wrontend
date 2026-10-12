@@ -1,10 +1,12 @@
 import { outdated } from '@shared/updates';
 import { useDraft } from '../state/draft';
+import { useHarnesses } from '../state/harnesses';
 import { useOllama } from '../state/ollama';
 import { useSessions } from '../state/sessions';
 import { useSettings } from '../state/settings';
 import { folderName, groupSessions, useSidebar } from '../state/sidebar';
 import { useUpdates } from '../state/updates';
+import { HarnessIcon } from './HarnessIcon';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
 
@@ -67,6 +69,7 @@ function OllamaStatusRow() {
 function SessionList() {
   const { sessions, order, activeId, open } = useSessions();
   const { query, collapsed, toggleGroup } = useSidebar();
+  const harnesses = useHarnesses((s) => s.list);
   if (order.length === 0) return <div className="empty-hint">Sessions appear here, grouped by folder.</div>;
   const groups = groupSessions(
     order.map((id) => sessions[id].info),
@@ -107,6 +110,9 @@ function SessionList() {
                   <button key={id} className={`nav-item session-row${id === activeId ? ' active' : ''}`} onClick={() => open(id)}>
                     <Leaf size={7} color={s.permissions.length ? 'var(--mustard)' : live ? 'var(--accent)' : 'var(--line)'} />
                     <span className="name">{s.info.title}</span>
+                    <span className="row-harness" title={harnesses.find((h) => h.id === s.info.harness)?.name ?? s.info.harness}>
+                      <HarnessIcon harness={s.info.harness} size={13} />
+                    </span>
                   </button>
                 );
               })}

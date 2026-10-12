@@ -5,6 +5,8 @@ import { Icon, type IconName } from './Icon';
 
 export interface MenuItem {
   key: string;
+  // drawn before the label, the detail lining up under the label
+  icon?: ReactNode;
   label: ReactNode;
   detail?: ReactNode;
   selected?: boolean;
@@ -93,12 +95,13 @@ export function Menu({
               <button
                 role="option"
                 aria-selected={item.selected}
-                className="menu-item"
+                className={`menu-item${item.icon ? ' with-icon' : ''}`}
                 onClick={() => {
                   setOpen(false);
                   onPick(item.key);
                 }}
               >
+                {item.icon && <span className="menu-icon">{item.icon}</span>}
                 <span className="label">{item.label}</span>
                 {item.detail && <span className="detail">{item.detail}</span>}
               </button>

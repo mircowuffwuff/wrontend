@@ -105,14 +105,14 @@ function SessionList() {
             {!closed &&
               ids.map((id) => {
                 const s = sessions[id];
-                const live = s.running || s.permissions.length > 0;
+                // the harness's mark is the row's status dot as well: mustard while it needs input, the accent while it runs
+                const state = s.permissions.length ? 'asking' : s.running ? 'running' : 'idle';
                 return (
                   <button key={id} className={`nav-item session-row${id === activeId ? ' active' : ''}`} onClick={() => open(id)}>
-                    <Leaf size={7} color={s.permissions.length ? 'var(--mustard)' : live ? 'var(--accent)' : 'var(--line)'} />
-                    <span className="name">{s.info.title}</span>
-                    <span className="row-harness" title={harnesses.find((h) => h.id === s.info.harness)?.name ?? s.info.harness}>
-                      <HarnessIcon harness={s.info.harness} size={13} />
+                    <span className={`row-mark ${state}`} title={harnesses.find((h) => h.id === s.info.harness)?.name ?? s.info.harness}>
+                      <HarnessIcon harness={s.info.harness} size={14} />
                     </span>
+                    <span className="name">{s.info.title}</span>
                   </button>
                 );
               })}

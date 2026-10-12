@@ -37,11 +37,11 @@ function describe(state: ComponentState): string {
     case 'installed':
       return state.version ? `Version ${state.version}` : 'Built into wrontend';
     case 'missing':
-      return 'Not set up yet · downloads when picked';
+      return 'Downloads when picked';
     case 'installing':
       return state.bytes >= SHOWN_FROM ? `${state.step} · ${mb(state.bytes)}` : `${state.step}…`;
     case 'failed':
-      return 'Setup failed · pick it to try again';
+      return 'Setup failed · pick to retry';
   }
 }
 
@@ -76,7 +76,7 @@ function HarnessChip() {
           {trigger}
         </>
       }
-      items={list.map((h) => ({ key: h.id, label: h.name, detail: describe(h.state), selected: h.id === picked }))}
+      items={list.map((h) => ({ key: h.id, icon: <HarnessIcon harness={h.id} size={14} />, label: h.name, detail: describe(h.state), selected: h.id === picked }))}
       empty="No harnesses are known."
       onPick={(id) => {
         setHarness(id);

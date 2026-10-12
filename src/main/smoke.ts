@@ -276,7 +276,7 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
   await step('13-harness-setup-fails', async () => {
     await waitFor(`${chip}?.textContent === 'Choose Harness'`);
     await js(`${chip}.click()`);
-    await waitFor(`[...document.querySelectorAll('.menu-item')].some((b) => b.textContent.includes('Claude Code') && b.textContent.includes('Not set up'))`);
+    await waitFor(`[...document.querySelectorAll('.menu-item')].some((b) => b.textContent.includes('Claude Code') && b.textContent.includes('Downloads when picked'))`);
     await shot('13-harness-menu');
     await js(`[...document.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Claude Code')).click()`);
     await waitFor(`document.querySelector('.setup-failed') && ${chip}.textContent === 'Claude Code'`);
@@ -479,7 +479,7 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     win.webContents.reload();
     await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
     await waitFor(`document.querySelectorAll('.group').length === 2`);
-    if (!(await js<boolean>(`document.querySelectorAll('.session-row .row-harness svg').length === 2`))) throw new Error('a session row is missing its harness icon');
+    if (!(await js<boolean>(`document.querySelectorAll('.session-row .row-mark svg').length === 2`))) throw new Error('a session row is missing its harness icon');
 
     const search = (text: string) =>
       js(`(() => {

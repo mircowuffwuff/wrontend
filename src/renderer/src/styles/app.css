@@ -592,6 +592,20 @@ button.chip:hover {
   font-size: 12px;
   color: var(--muted);
 }
+/* an item led by an icon: the icon beside the label, the detail under the label */
+.menu-item.with-icon {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+}
+.menu-item.with-icon .detail {
+  grid-column: 2;
+}
+.menu-icon {
+  display: inline-grid;
+  color: var(--muted);
+}
 
 /* a menu row: the item, and at its end a button that acts on it, shown while the row is pointed at */
 .menu-row {
@@ -686,16 +700,17 @@ button.chip:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* which harness runs the session, in its own shape */
-.row-harness {
+/* the session's harness, in its own shape, coloured by the session's state */
+.row-mark {
   display: inline-grid;
   flex-shrink: 0;
   color: var(--muted);
-  opacity: 0.7;
 }
-.session-row:hover .row-harness,
-.session-row.active .row-harness {
-  opacity: 1;
+.row-mark.running {
+  color: var(--accent);
+}
+.row-mark.asking {
+  color: var(--mustard);
 }
 
 /* transcript */

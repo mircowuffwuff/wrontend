@@ -9,7 +9,7 @@ import type { CreatedSession, CreateSessionOptions, SessionEvent, SessionInfo, S
 import type { ProxyServer } from '../proxy/server';
 import { PROFILES } from './profiles';
 import { AgentSession } from './session';
-import { SessionStore } from './store';
+import { FolderStore, SessionStore } from './store';
 
 interface Entry {
   info: SessionInfo;
@@ -24,6 +24,7 @@ interface Entry {
 export class AgentHost {
   private readonly sessions = new Map<string, Entry>();
   private readonly store: SessionStore;
+  private readonly folders: FolderStore;
   private readonly dataDir: string;
 
   constructor(
@@ -37,9 +38,14 @@ export class AgentHost {
   ) {
     // full long-form paths: a Windows 8.3 short path such as C:\Users\ABCDEF~1 makes Node's file watcher in the harness abort
     this.dataDir = realpathSync.native(dataDir);
+    this.folders = new FolderStore(join(this.dataDir, 'folders'));
     this.store = new SessionStore(join(this.dataDir, 'sessions'));
     for (const stored of this.store.list()) {
-      this.sessions.set(stored.info.id, { ...stored, modes: stored.modes ?? null, agent: null, starting: null });
+      // a session whose project folder has no record is skipped like a record that does not parse
+      const folder = this.folders.get(stored.info.folderId);
+      if (!folder) continue;
+      const info = { ...stored.info, folder: folder.path };
+      this.sessions.set(info.id, { ...stored, info, modes: stored.modes ?? null, agent: null, starting: null });
     }
   }
 
@@ -51,10 +57,12 @@ export class AgentHost {
 
   async create(options: CreateSessionOptions): Promise<CreatedSession> {
     if (!PROFILES[options.harness]) throw new Error(`no harness called ${options.harness}`);
+    const folder = this.folders.ensure(realpathSync.native(options.folder));
     const info: SessionInfo = {
       id: randomUUID(),
       harness: options.harness,
-      folder: realpathSync.native(options.folder),
+      folderId: folder.id,
+      folder: folder.path,
       model: options.model,
       effort: options.effort,
       title: 'New session',
@@ -198,7 +206,8 @@ export class AgentHost {
   }
 
   private persist(entry: Entry): void {
-    this.store.save({ info: entry.info, harnessSessionId: entry.harnessSessionId, modes: entry.modes, items: entry.items });
+    const { folder: _path, ...info } = entry.info;
+    this.store.save({ info, harnessSessionId: entry.harnessSessionId, modes: entry.modes, items: entry.items });
   }
 
   private get(id: string): Entry {

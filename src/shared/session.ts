@@ -6,6 +6,8 @@ import type { Effort, RequestStats } from './proxy';
 export interface SessionInfo {
   id: string;
   harness: string;
+  // the project folder's record, and its path as that record has it
+  folderId: string;
   folder: string;
   model: string;
   effort: Effort;

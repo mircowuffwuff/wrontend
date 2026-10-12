@@ -68,28 +68,31 @@ function SessionList() {
   // grouped by folder, the folder with the newest session first
   const groups = new Map<string, string[]>();
   for (const id of order) {
-    const folder = sessions[id].info.folder;
-    groups.set(folder, [...(groups.get(folder) ?? []), id]);
+    const { folderId } = sessions[id].info;
+    groups.set(folderId, [...(groups.get(folderId) ?? []), id]);
   }
   return (
     <>
-      {[...groups].map(([folder, ids]) => (
-        <div key={folder} className="group">
-          <div className="group-header" title={folder}>
-            <span className="name">{folder.split(/[\\/]/).pop()}</span>
+      {[...groups].map(([folderId, ids]) => {
+        const { folder } = sessions[ids[0]].info;
+        return (
+          <div key={folderId} className="group">
+            <div className="group-header" title={folder}>
+              <span className="name">{folder.split(/[\\/]/).pop()}</span>
+            </div>
+            {ids.map((id) => {
+              const s = sessions[id];
+              const live = s.running || s.permissions.length > 0;
+              return (
+                <button key={id} className={`nav-item session-row${id === activeId ? ' active' : ''}`} onClick={() => open(id)}>
+                  <Leaf size={7} color={s.permissions.length ? 'var(--mustard)' : live ? 'var(--accent)' : 'var(--line)'} />
+                  <span className="name">{s.info.title}</span>
+                </button>
+              );
+            })}
           </div>
-          {ids.map((id) => {
-            const s = sessions[id];
-            const live = s.running || s.permissions.length > 0;
-            return (
-              <button key={id} className={`nav-item session-row${id === activeId ? ' active' : ''}`} onClick={() => open(id)}>
-                <Leaf size={7} color={s.permissions.length ? 'var(--mustard)' : live ? 'var(--accent)' : 'var(--line)'} />
-                <span className="name">{s.info.title}</span>
-              </button>
-            );
-          })}
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }

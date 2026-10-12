@@ -1,0 +1,23 @@
+# the portable Windows build: a zip with wrontend.exe in it, no installer. run with npm run dist; the zip lands in dist/.
+# everything else wrontend needs is installed where it is first needed, so the build carries wrontend alone.
+#
+# no electronFuses here, and none may be added that turn RunAsNode off: every harness, wrontend's own npm and the fake
+# agent run on the app's own executable with ELECTRON_RUN_AS_NODE.
+appId: io.github.mircowuffwuff.wrontend
+productName: wrontend
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+directories:
+  output: dist
+  buildResources: build
+# electron-vite's output only; the production dependencies the main process loads are added beside it
+files:
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - package.json
+# nothing native to rebuild
+npmRebuild: false
+win:
+  target:
+    - target: zip
+      arch: x64

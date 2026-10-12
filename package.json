@@ -11,7 +11,8 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "smoke": "electron-vite build && electron . --smoke=out/smoke"
+    "smoke": "electron-vite build && electron . --smoke=out/smoke",
+    "dist": "electron-vite build && electron-builder"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "^1.8.0",

@@ -75,9 +75,20 @@ export class ComponentStore {
 
   activate(id: string, version: string): void {
     this.manifest.active[id] = version;
+    this.write();
+  }
+
+  private write(): void {
     const file = join(this.root, 'components.json');
     writeFileSync(`${file}.tmp`, JSON.stringify(this.manifest, null, 2));
     renameSync(`${file}.tmp`, file);
+  }
+
+  // the component is no longer installed anywhere
+  forget(id: string): void {
+    if (!(id in this.manifest.active)) return;
+    delete this.manifest.active[id];
+    this.write();
   }
 
   // what a run that ended mid-install left behind

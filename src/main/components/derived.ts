@@ -7,7 +7,7 @@
 
 import { createHash } from 'node:crypto';
 import type { ComponentState } from '@shared/components';
-import type { ModelDetails, ModelReasoning, ModelSummary } from '@shared/ollama';
+import type { LoadedModel, ModelDetails, ModelReasoning, ModelSummary } from '@shared/ollama';
 import type { CreateRequest } from '../ollama/client';
 import type { ComponentEngine, Driver } from './engine';
 import { InstallError } from './npm';
@@ -27,6 +27,14 @@ export interface DerivedOllama {
   models(): Promise<ModelSummary[]>;
   show(name: string): Promise<ModelDetails>;
   create(request: CreateRequest): Promise<void>;
+  delete(name: string): Promise<void>;
+}
+
+// what deleting a model needs on top: a loaded model is unloaded first, so Windows holds no file open that Ollama removes
+export interface DeletingOllama {
+  loaded(): Promise<LoadedModel[]>;
+  unload(name: string): Promise<void>;
+  delete(name: string): Promise<void>;
 }
 
 export interface DerivedOptions {
@@ -153,6 +161,31 @@ export class DerivedModels implements Driver {
     await this.list();
   }
 
+  get readOnly(): boolean {
+    return !!this.options.readOnly;
+  }
+
+  // Ollama's model list changed outside this class: the next request reads it again
+  invalidate(): void {
+    this.listing = null;
+  }
+
+  // deletes the copy from Ollama, if it is there, and forgets it
+  async remove(id: string): Promise<void> {
+    if (this.options.readOnly) throw new Error('this run writes nothing into Ollama');
+    const name = derivedName(id.slice(ID_PREFIX.length));
+    this.invalidate();
+    if ((await this.list()).models.some((m) => m.name === name)) {
+      try {
+        await this.ollama.delete(name);
+      } finally {
+        this.invalidate();
+      }
+    }
+    this.store.forget(id);
+    await this.list();
+  }
+
   // what the model picker says about a model
   async reasoning(engine: ComponentEngine, original: string): Promise<ModelReasoning> {
     const plan = await this.plan(original);
@@ -201,5 +234,21 @@ export async function routeModel(engine: ComponentEngine, derived: DerivedModels
     return plan.name;
   } catch {
     return original;
+  }
+}
+
+// deletes a model from Ollama with wrontend's copy of it. the copy goes first: a failure halfway then leaves an original whose
+// copy is made again on its next pick, never a copy whose original is gone, which the picker would not list
+export async function deleteModel(engine: ComponentEngine, derived: DerivedModels, ollama: DeletingOllama, name: string): Promise<void> {
+  if (derived.readOnly) throw new Error('This run deletes nothing from Ollama.');
+  if (engine.state(derivedId(name)).status === 'installing') throw new Error(`A copy of ${name} is being made. Try again when it is done.`);
+  const copy = derivedName(name);
+  const loaded = await ollama.loaded().catch(() => []);
+  for (const model of loaded) if (model.name === name || model.name === copy) await ollama.unload(model.name);
+  await engine.remove(derivedId(name));
+  try {
+    await ollama.delete(name);
+  } finally {
+    derived.invalidate();
   }
 }

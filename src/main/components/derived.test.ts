@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ModelDetails, ModelSummary } from '@shared/ollama';
 import type { CreateRequest } from '../ollama/client';
-import { derivedId, derivedName, DerivedModels, isDerived, routeModel, type DerivedOllama } from './derived';
+import { deleteModel, derivedId, derivedName, DerivedModels, isDerived, routeModel, type DeletingOllama, type DerivedOllama } from './derived';
 import { ComponentEngine } from './engine';
 import { RENDERERS, rendererFor } from './renderers';
 import { ComponentStore } from './store';
@@ -21,12 +21,15 @@ const qwen38: Omit<ModelDetails, 'name'> = {
   basename: 'Qwen3.8-27B',
 };
 
-// an Ollama in memory: a create adds the copy to the list, with the renderer it was given
+// an Ollama in memory: a create adds the copy to the list, with the renderer it was given; a delete takes a model off it
 function fakeOllama(version = '0.40.3') {
   const models: ModelSummary[] = [];
   const details = new Map<string, ModelDetails>();
   const creates: CreateRequest[] = [];
-  const state = { version, failCreate: false };
+  // every delete and unload, in order
+  const calls: string[] = [];
+  const loaded = new Set<string>();
+  const state = { version, failCreate: false, failDelete: null as string | null };
   const add = (name: string, digest: string, d: Omit<ModelDetails, 'name'>) => {
     const at = models.findIndex((m) => m.name === name);
     const summary = { name, digest, sizeBytes: 1, family: d.architecture, parameterSize: null, quantization: null };
@@ -49,8 +52,24 @@ function fakeOllama(version = '0.40.3') {
       const from = details.get(request.from)!;
       add(request.model, `copy-of-${models.find((m) => m.name === request.from)!.digest}`, { ...from, hasRenderer: !!request.renderer });
     },
+    delete: async (name) => {
+      calls.push(`delete ${name}`);
+      if (state.failDelete === name) throw new Error('permission denied');
+      const at = models.findIndex((m) => m.name === name);
+      if (at < 0) throw new Error(`model '${name}' not found`);
+      models.splice(at, 1);
+      details.delete(name);
+    },
   };
-  return { ollama, add, creates, state };
+  const deleting: DeletingOllama = {
+    loaded: async () => [...loaded].map((name) => ({ name, sizeBytes: 1, vramBytes: 1, contextLength: null })),
+    unload: async (name) => {
+      calls.push(`unload ${name}`);
+      loaded.delete(name);
+    },
+    delete: ollama.delete,
+  };
+  return { ollama, deleting, add, creates, calls, loaded, state };
 }
 
 function setup(options: { enabled?: boolean; readOnly?: boolean; version?: string } = {}) {
@@ -169,5 +188,57 @@ describe('derived models', () => {
     expect(await routeModel(engine, derived, HF)).toBe(HF);
     expect(creates).toHaveLength(0);
     expect(engine.state(derivedId(HF))).toMatchObject({ status: 'failed' });
+  });
+});
+
+describe('deleting a model', () => {
+  it('unloads it, deletes its copy first and forgets the copy', async () => {
+    const { derived, engine, deleting, calls, loaded, store } = setup();
+    await routeModel(engine, derived, HF);
+    loaded.add(COPY);
+    await deleteModel(engine, derived, deleting, HF);
+    expect(calls).toEqual([`unload ${COPY}`, `delete ${COPY}`, `delete ${HF}`]);
+    expect(store.recorded(derivedId(HF))).toBeNull();
+    expect(engine.state(derivedId(HF))).toEqual({ status: 'missing' });
+    expect(await derived.models()).toEqual([]);
+  });
+
+  it('deletes a model that has no copy, and forgets a copy already gone from Ollama', async () => {
+    const plain = setup();
+    plain.add('llama4:8b', 'bbbb', { ...qwen38, capabilities: ['completion'] });
+    await deleteModel(plain.engine, plain.derived, plain.deleting, 'llama4:8b');
+    expect(plain.calls).toEqual(['delete llama4:8b']);
+
+    const gone = setup();
+    gone.store.activate(derivedId(HF), 'aaaaaaaaaaaa+qwen3.8+qwen3.5');
+    await deleteModel(gone.engine, gone.derived, gone.deleting, HF);
+    expect(gone.calls).toEqual([`delete ${HF}`]);
+    expect(gone.store.recorded(derivedId(HF))).toBeNull();
+  });
+
+  it('keeps the original when its copy cannot be deleted', async () => {
+    const { derived, engine, deleting, calls, state, store } = setup();
+    await routeModel(engine, derived, HF);
+    state.failDelete = COPY;
+    await expect(deleteModel(engine, derived, deleting, HF)).rejects.toThrow('permission denied');
+    expect(calls).toEqual([`delete ${COPY}`]);
+    expect(store.recorded(derivedId(HF))).not.toBeNull();
+    expect((await derived.models()).map((m) => m.name)).toEqual([HF]);
+  });
+
+  it('refuses while the copy is being made', async () => {
+    const { derived, engine, deleting, calls, loaded } = setup();
+    const making = routeModel(engine, derived, HF);
+    await new Promise((r) => setTimeout(r, 5));
+    loaded.add(HF);
+    await expect(deleteModel(engine, derived, deleting, HF)).rejects.toThrow('is being made');
+    expect(calls).toEqual([]);
+    expect(await making).toBe(COPY);
+  });
+
+  it('deletes nothing when read-only', async () => {
+    const { derived, engine, deleting, calls } = setup({ readOnly: true });
+    await expect(deleteModel(engine, derived, deleting, HF)).rejects.toThrow('deletes nothing');
+    expect(calls).toEqual([]);
   });
 });

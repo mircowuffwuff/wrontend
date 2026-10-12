@@ -13,6 +13,8 @@ export interface Driver {
   state(id: string): ComponentState;
   // sets the component up; a failure the user should read is an InstallError
   install(id: string, report: (step: string, bytes: number) => void): Promise<void>;
+  // takes the component away; a driver without it has nothing the user removes
+  remove?(id: string): Promise<void>;
 }
 
 export class ComponentEngine {
@@ -44,6 +46,16 @@ export class ComponentEngine {
     const tracked = job.finally(() => this.running.delete(id));
     this.running.set(id, tracked);
     return tracked;
+  }
+
+  // a component being set up is not removed under its own install
+  async remove(id: string): Promise<void> {
+    const driver = this.driver(id);
+    if (!driver.remove) throw new Error(`${id} cannot be removed`);
+    if (this.running.has(id)) throw new Error(`${id} is being set up`);
+    await driver.remove(id);
+    this.working.delete(id);
+    this.onChange(id, this.state(id));
   }
 
   private async run(driver: Driver, id: string): Promise<void> {

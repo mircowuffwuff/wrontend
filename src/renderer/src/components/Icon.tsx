@@ -1,7 +1,6 @@
 // the app's line icons, drawn on a 24-unit grid with a 1.6 stroke
 
 const PATHS = {
-  menu: 'M4 7h16M4 12h16M4 17h10',
   sidebar: 'M4 5h16v14H4zM9.5 5v14',
   back: 'M15 5l-7 7 7 7',
   forward: 'M9 5l7 7-7 7',

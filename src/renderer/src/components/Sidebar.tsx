@@ -102,9 +102,6 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-top drag">
-        <button className="icon-button" aria-label="Menu">
-          <Icon name="menu" />
-        </button>
         <button className="icon-button" aria-label="Toggle sidebar">
           <Icon name="sidebar" />
         </button>

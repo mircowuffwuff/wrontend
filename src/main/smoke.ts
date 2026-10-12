@@ -99,6 +99,27 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await js(`document.querySelector('.diff')?.scrollIntoView({ block: 'center' })`);
     await shot('04-tools-expanded');
   });
+  // the card that ends a turn which changed files: the first turn's one file, then five, with a failed edit left out
+  await step('04-edited-files', async () => {
+    const card = `[...document.querySelectorAll('.edited-files')].pop()`;
+    const names = `[...${card}.querySelectorAll('.edited-file .name')].map((n) => n.textContent).join(',')`;
+    if ((await js<string>(names)) !== 'readme.md') throw new Error(`the first turn's card lists ${await js<string>(names)}`);
+    await type('edit several files');
+    await waitFor(`document.querySelectorAll('.edited-files').length === 2 && !document.querySelector('.send.stop')`);
+    const head = await js<string>(`${card}.querySelector('.edited-head').textContent`);
+    if (head !== 'Edited 5 files+9-5') throw new Error(`the card's header reads ${head}`);
+    if ((await js<string>(names)) !== 'app.ts,view.ts,usage.md') throw new Error(`the card's first rows are ${await js<string>(names)}`);
+    await shot('04-edited-files');
+    await js(`${card}.querySelector('.edited-row.more').click()`);
+    await waitFor(`${card}.querySelectorAll('.edited-file').length === 5 && ${card}.querySelector('.edited-row.more').textContent === 'Show less'`);
+    if ((await js<string>(names)).includes('package-lock')) throw new Error('the failed edit is on the card');
+    await js(`${card}.querySelector('.edited-file .edited-row').click()`);
+    await waitFor(`${card}.querySelectorAll('.edited-diffs .diff').length === 2`);
+    await js(`document.querySelector('.content').scrollTop = document.querySelector('.content').scrollHeight`);
+    await shot('04-edited-files-open');
+    await js(`${card}.querySelector('.edited-row.more').click()`);
+    await waitFor(`${card}.querySelectorAll('.edited-file').length === 3`);
+  });
   await step('05-running-then-stopped', async () => {
     await type('slow please');
     await waitFor(`document.querySelector('.send.stop')`);

@@ -41,7 +41,8 @@ export function Counts({ counts }: { counts: LineCounts }) {
 
 const CONTEXT = 3;
 
-export function DiffView({ path, oldText, newText }: { path: string; oldText?: string | null; newText: string }) {
+// the path heads the diff unless the caller shows it already
+export function DiffView({ path, oldText, newText }: { path?: string; oldText?: string | null; newText: string }) {
   const parts = diffLines(oldText ?? '', newText);
   const rows: { type: 'add' | 'remove' | 'same' | 'fold'; text: string; oldNo?: number; newNo?: number }[] = [];
   let oldNo = 1;
@@ -70,7 +71,7 @@ export function DiffView({ path, oldText, newText }: { path: string; oldText?: s
   });
   return (
     <div className="diff">
-      <div className="diff-path mono">{path}</div>
+      {path && <div className="diff-path mono">{path}</div>}
       <div className="diff-body mono">
         {rows.map((r, i) =>
           r.type === 'fold' ? (

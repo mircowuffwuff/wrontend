@@ -1,8 +1,9 @@
-// the session's transcript: messages, thinking, grouped tool calls, plans, errors -- and the scroll that follows it
+// the session's transcript: messages, thinking, grouped tool calls, the files a turn edited, plans, errors -- and the scroll that follows it
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SessionView } from '../state/sessions';
 import { group, type TranscriptItem } from '../state/transcript';
+import { EditedFiles } from './EditedFiles';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
 import { Markdown } from './Markdown';
@@ -59,7 +60,7 @@ export function Transcript({ session }: { session: SessionView }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const now = useNow(session.running);
-  const blocks = group(session.items);
+  const blocks = group(session.items, session.running);
   const lastBlock = blocks[blocks.length - 1];
 
   // a message the user just sent always brings the view to the bottom, and so does opening a session
@@ -86,6 +87,7 @@ export function Transcript({ session }: { session: SessionView }) {
       <div className="column transcript">
         {blocks.map((block) => {
           if (block.kind === 'tools') return <ToolGroup key={block.id} tools={block.tools} live={session.running && block === lastBlock} />;
+          if (block.kind === 'edits') return <EditedFiles key={block.id} files={block.files} />;
           const item = block.item;
           switch (item.kind) {
             case 'user':

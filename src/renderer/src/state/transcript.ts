@@ -1,4 +1,4 @@
-// turns the stream of ACP session updates into the items the transcript shows
+// turns the stream of ACP session updates into the items the transcript shows, and those into the blocks it draws
 
 import type { PlanEntry, SessionUpdate, ToolCallContent, ToolCallStatus, ToolKind } from '@agentclientprotocol/sdk';
 
@@ -114,19 +114,66 @@ export function addNotice(items: TranscriptItem[], text: string): TranscriptItem
   return [...closeThought(items, Date.now()), { kind: 'notice', id: nextId('n'), text }];
 }
 
-// consecutive tool calls between two pieces of text are shown as one group
-export type Block = { kind: 'item'; item: Exclude<TranscriptItem, ToolItem> } | { kind: 'tools'; id: string; tools: ToolItem[] };
+export type FileDiff = Extract<ToolCallContent, { type: 'diff' }>;
 
-export function group(items: TranscriptItem[]): Block[] {
+// one file a turn changed, with every diff its tool calls carried, in order. a harness sends the changed stretches
+// of a file rather than the whole file -- Claude Code sends each hunk with a little context -- so two edits to one
+// file stay two diffs and cannot be merged into one
+export interface EditedFile {
+  path: string;
+  diffs: FileDiff[];
+}
+
+// consecutive tool calls between two pieces of text are shown as one group, and a finished turn that changed files
+// ends in a card of those files
+export type Block =
+  | { kind: 'item'; item: Exclude<TranscriptItem, ToolItem> }
+  | { kind: 'tools'; id: string; tools: ToolItem[] }
+  | { kind: 'edits'; id: string; files: EditedFile[] };
+
+export function group(items: TranscriptItem[], running = false): Block[] {
   const blocks: Block[] = [];
+  // where the turn being read starts in blocks, and the files its completed tool calls changed
+  let start = 0;
+  let edits = new Map<string, EditedFile>();
+  let editsId = '';
+
+  const closeTurn = () => {
+    if (edits.size === 0) return;
+    // the card sums up the turn's work, so a Stopped line or an error that ended the turn stays below it
+    let at = blocks.length;
+    while (at > start) {
+      const prev = blocks[at - 1];
+      if (prev.kind !== 'item' || (prev.item.kind !== 'notice' && prev.item.kind !== 'error')) break;
+      at--;
+    }
+    blocks.splice(at, 0, { kind: 'edits', id: editsId, files: [...edits.values()] });
+  };
+
   for (const item of items) {
+    if (item.kind === 'user') {
+      closeTurn();
+      edits = new Map();
+      start = blocks.length;
+    }
     if (item.kind === 'tool') {
       const last = blocks[blocks.length - 1];
       if (last?.kind === 'tools') last.tools.push(item);
       else blocks.push({ kind: 'tools', id: `g-${item.id}`, tools: [item] });
+      // a failed or rejected call changed nothing
+      if (item.status !== 'completed') continue;
+      for (const c of item.content) {
+        if (c.type !== 'diff') continue;
+        if (edits.size === 0) editsId = `f-${item.id}`;
+        const file = edits.get(c.path);
+        if (file) file.diffs.push(c);
+        else edits.set(c.path, { path: c.path, diffs: [c] });
+      }
     } else {
       blocks.push({ kind: 'item', item });
     }
   }
+  // the turn still running has no card yet
+  if (!running) closeTurn();
   return blocks;
 }

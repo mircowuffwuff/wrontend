@@ -937,6 +937,62 @@ button.chip:hover {
   background: var(--hover);
 }
 
+.edited-files {
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-md);
+  padding: 4px 0;
+}
+.edited-head,
+.edited-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+}
+.edited-head > svg:first-child,
+.edited-row > svg:first-child {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.edited-head .name,
+.edited-row .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edited-head .chevron-space {
+  width: 14px;
+  flex-shrink: 0;
+}
+.edited-files .counts {
+  font-size: 13px;
+}
+.edited-row:hover {
+  background: var(--hover);
+}
+.edited-row.more {
+  color: var(--muted);
+  padding-left: 35px;
+}
+.edited-row.more:hover {
+  color: var(--text);
+}
+.edited-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 10px;
+}
+.edited-path {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .thought-text {
   margin: 8px 0 0;
   padding: 8px 0 8px 14px;

@@ -1,6 +1,6 @@
 // a scripted ACP agent for testing the app without a model: thinking, a plan, markdown, a read, an edit that needs permission.
 // a prompt containing "slow" streams thinking until it is cancelled, one containing "fail" ends the turn with an error,
-// and one containing "echo" answers with how many quoted lines it carried
+// one containing "echo" answers with how many quoted lines it carried, and one containing "several" edits several files
 
 import { Readable, Writable } from 'node:stream';
 import { agent, ndJsonStream, PROTOCOL_VERSION, RequestError, type AgentContext, type SessionUpdate } from '@agentclientprotocol/sdk';
@@ -10,6 +10,17 @@ const cancelled = new Set<string>();
 
 const OLD = '# readme\n\nwrontend is a frontend.\n\n## usage\n\nrun it.\n';
 const NEW = '# readme\n\nwrontend is a graphical frontend for terminal coding agents.\n\n## usage\n\nrun it.\n';
+
+// the edits of a prompt containing "several": five files, one of them edited twice, and one edit that fails
+const SEVERAL: { diff: { path: string; oldText: string | null; newText: string }; fails?: boolean }[] = [
+  { diff: { path: 'src/app.ts', oldText: 'const port = 3000;\nlisten(port);\n', newText: 'const port = Number(process.env.PORT ?? 3000);\nlisten(port);\n' } },
+  { diff: { path: 'src/view.ts', oldText: 'export const title = "app";\n', newText: 'export const title = "wrontend";\nexport const subtitle = "a frontend";\n' } },
+  { diff: { path: 'package-lock.json', oldText: '{}\n', newText: '{ "lockfileVersion": 3 }\n' }, fails: true },
+  { diff: { path: 'docs/usage.md', oldText: null, newText: '# usage\n\nrun it with npm start.\n' } },
+  { diff: { path: 'src/app.ts', oldText: 'listen(port);\n', newText: 'listen(port, () => log(`listening on ${port}`));\n' } },
+  { diff: { path: 'readme.md', oldText: 'run it.\n', newText: 'run it with npm start.\n' } },
+  { diff: { path: 'package.json', oldText: '"start": "node app.js"\n', newText: '"start": "node dist/app.js"\n' } },
+];
 
 const ANSWER = `Done — the readme now says what wrontend is.
 
@@ -67,6 +78,18 @@ const app = agent({ name: 'wrontend-fake-agent' })
     if (text.includes('echo')) {
       const quoted = text.split('\n').filter((l) => l.startsWith('>')).length;
       await stream(client, sessionId, 'agent_message_chunk', `Got it: your message quoted ${quoted} line${quoted === 1 ? '' : 's'}.`);
+      return { stopReason: 'end_turn' };
+    }
+
+    if (text.includes('several')) {
+      for (const [n, change] of SEVERAL.entries()) {
+        const toolCallId = `several-${n}`;
+        const content = [{ type: 'diff' as const, ...change.diff }];
+        await update(client, sessionId, { sessionUpdate: 'tool_call', toolCallId, title: `Edit ${change.diff.path}`, kind: 'edit', status: 'in_progress', content });
+        await sleep(50);
+        await update(client, sessionId, { sessionUpdate: 'tool_call_update', toolCallId, status: change.fails ? 'failed' : 'completed' });
+      }
+      await stream(client, sessionId, 'agent_message_chunk', 'Done: five files changed, and the lockfile left alone.');
       return { stopReason: 'end_turn' };
     }
 

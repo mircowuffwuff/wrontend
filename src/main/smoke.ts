@@ -268,6 +268,32 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await waitFor(`!document.querySelector('.settings')`);
   });
 
+  // main's stand-in npm fails the first install and lets the second one through
+  const chip = `document.querySelector('.harness-chip')`;
+  await step('13-harness-setup-fails', async () => {
+    await waitFor(`${chip}?.textContent === 'Choose Harness'`);
+    await js(`${chip}.click()`);
+    await waitFor(`[...document.querySelectorAll('.menu-item')].some((b) => b.textContent.includes('Claude Code') && b.textContent.includes('Not set up'))`);
+    await shot('13-harness-menu');
+    await js(`[...document.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Claude Code')).click()`);
+    await waitFor(`document.querySelector('.setup-failed') && ${chip}.textContent === 'Claude Code'`);
+    await js(`document.querySelector('.setup-failed .tool-summary').click()`);
+    await waitFor(`document.querySelector('.setup-failed pre')?.textContent.includes('E404')`);
+    await shot('13-harness-setup-failed');
+  });
+  await step('14-harness-first-pick', async () => {
+    await js(`[...document.querySelectorAll('.setup-failed button')].find((b) => b.textContent === 'Try Again').click()`);
+    await waitFor(`!document.querySelector('.setup-failed') && ${chip}.textContent.includes('Setting up Claude Code') && / MB$/.test(${chip}.textContent)`);
+    await shot('14-harness-installing');
+    await waitFor(`${chip}.textContent === 'Claude Code'`, 30_000);
+    const state = await js<{ status: string; version?: string }>(`window.wrontend.invoke('harness:list').then((l) => l.find((h) => h.id === 'claude-code').state)`);
+    if (state.status !== 'installed' || state.version !== '0.89.1') throw new Error(`Claude Code is ${JSON.stringify(state)} after setting it up`);
+    await js(`${chip}.click()`);
+    await waitFor(`[...document.querySelectorAll('.menu-item')].some((b) => b.textContent.includes('Version 0.89.1'))`);
+    await shot('14-harness-ready');
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  });
+
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));
   console.log(`wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`);

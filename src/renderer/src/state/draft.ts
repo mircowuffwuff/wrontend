@@ -1,4 +1,4 @@
-// the choices on the new-session screen before the first prompt -- the last model and effort are remembered
+// the choices on the new-session screen before the first prompt -- the last harness, model and effort are remembered
 
 import { create } from 'zustand';
 import type { Effort } from '@shared/proxy';
@@ -6,6 +6,7 @@ import type { Effort } from '@shared/proxy';
 const KEY = 'wrontend.draft';
 
 interface Remembered {
+  harness: string | null;
   model: string | null;
   effort: Effort;
 }
@@ -13,9 +14,9 @@ interface Remembered {
 function load(): Remembered {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Remembered>;
-    return { model: saved.model ?? null, effort: saved.effort === 'off' ? 'off' : 'on' };
+    return { harness: saved.harness ?? null, model: saved.model ?? null, effort: saved.effort === 'off' ? 'off' : 'on' };
   } catch {
-    return { model: null, effort: 'on' };
+    return { harness: null, model: null, effort: 'on' };
   }
 }
 
@@ -29,23 +30,26 @@ function save(r: Remembered): void {
 
 interface DraftState extends Remembered {
   folder: string | null;
+  setHarness(harness: string): void;
   setModel(model: string): void;
   setEffort(effort: Effort): void;
   setFolder(folder: string): void;
 }
 
-export const useDraft = create<DraftState>((set, get) => ({
-  ...load(),
-  folder: null,
-  setModel(model) {
-    set({ model });
-    save({ model, effort: get().effort });
-  },
-  setEffort(effort) {
-    set({ effort });
-    save({ model: get().model, effort });
-  },
-  setFolder(folder) {
-    set({ folder });
-  },
-}));
+export const useDraft = create<DraftState>((set, get) => {
+  const remember = (change: Partial<Remembered>) => {
+    set(change);
+    const { harness, model, effort } = get();
+    save({ harness, model, effort });
+  };
+  return {
+    ...load(),
+    folder: null,
+    setHarness: (harness) => remember({ harness }),
+    setModel: (model) => remember({ model }),
+    setEffort: (effort) => remember({ effort }),
+    setFolder(folder) {
+      set({ folder });
+    },
+  };
+});

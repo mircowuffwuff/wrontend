@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge';
+import type { ComponentState, HarnessEntry } from '@shared/components';
 import { useDraft } from '../state/draft';
+import { isReady, useHarnesses } from '../state/harnesses';
 import { useOllama } from '../state/ollama';
 import { composeMessage, useQuotes, type QuoteCard } from '../state/quotes';
 import { useSessions, type SessionView } from '../state/sessions';
 import { Icon } from './Icon';
-import { ContextLeaves } from './Leaf';
+import { ContextLeaves, Leaf } from './Leaf';
 import { Menu } from './Menu';
 import { PermissionPrompt } from './Permission';
 
@@ -16,6 +18,92 @@ const NO_CARDS: QuoteCard[] = [];
 
 function gb(bytes: number): string {
   return `${(bytes / 1e9).toFixed(1)} GB`;
+}
+
+function mb(bytes: number): string {
+  return `${Math.round(bytes / 1e6)} MB`;
+}
+
+// npm writes only its own small files while it resolves; the size is worth showing once the downloads land
+const SHOWN_FROM = 1e6;
+
+function describe(state: ComponentState): string {
+  switch (state.status) {
+    case 'installed':
+      return state.version ? `Version ${state.version}` : 'Built into wrontend';
+    case 'missing':
+      return 'Not set up yet · downloads when picked';
+    case 'installing':
+      return state.bytes >= SHOWN_FROM ? `${state.step} · ${mb(state.bytes)}` : `${state.step}…`;
+    case 'failed':
+      return 'Setup failed · pick it to try again';
+  }
+}
+
+// the harness for a new session; a harness that is not set up is set up by picking it
+function HarnessChip() {
+  const list = useHarnesses((s) => s.list);
+  const install = useHarnesses((s) => s.install);
+  const { harness: picked, setHarness } = useDraft();
+  const current = list.find((h) => h.id === picked);
+
+  let trigger = <>Choose Harness</>;
+  // a failed setup keeps the harness's name: the error under the chips says what went wrong with it
+  if (current?.state.status === 'installed' || current?.state.status === 'failed') trigger = <>{current.name}</>;
+  if (current?.state.status === 'installing') {
+    const { bytes } = current.state;
+    trigger = (
+      <>
+        <Leaf size={9} style={{ animation: 'sway 1.6s ease-in-out infinite' }} />
+        Setting up {current.name}
+        {bytes >= SHOWN_FROM && <span className="mono">{mb(bytes)}</span>}
+      </>
+    );
+  }
+
+  return (
+    <Menu
+      triggerClass="chip outline harness-chip"
+      title="The harness is chosen before the first prompt and stays for the session"
+      trigger={
+        <>
+          <Icon name="harness" size={14} />
+          {trigger}
+        </>
+      }
+      items={list.map((h) => ({ key: h.id, label: h.name, detail: describe(h.state), selected: h.id === picked }))}
+      empty="No harnesses are known."
+      onPick={(id) => {
+        setHarness(id);
+        const status = list.find((h) => h.id === id)?.state.status;
+        if (status === 'missing' || status === 'failed') void install(id);
+      }}
+    />
+  );
+}
+
+function SetupFailed({ harness }: { harness: HarnessEntry }) {
+  const [open, setOpen] = useState(false);
+  const install = useHarnesses((s) => s.install);
+  if (harness.state.status !== 'failed') return null;
+  const { error, detail } = harness.state;
+  return (
+    <div className="error-block setup-failed">
+      <div className="setup-failed-row">
+        <button className="tool-summary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          <Leaf size={9} color="var(--remove)" />
+          <span>
+            {harness.name} could not be set up. {error}
+          </span>
+          <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
+        </button>
+        <button className="button" onClick={() => void install(harness.id)}>
+          Try Again
+        </button>
+      </div>
+      {open && <pre className="mono">{detail}</pre>}
+    </div>
+  );
 }
 
 export function Composer({ session }: { session: SessionView | null }) {
@@ -45,13 +133,15 @@ export function Composer({ session }: { session: SessionView | null }) {
 
   useEffect(() => area.current?.focus(), [session?.info.id]);
 
-  const canSend = (text.trim().length > 0 || cards.length > 0) && !!model && (!fresh || !!draft.folder) && !running;
+  const harness = useHarnesses((s) => s.list.find((h) => h.id === draft.harness));
+  const canSend =
+    (text.trim().length > 0 || cards.length > 0) && !!model && (!fresh || (!!draft.folder && isReady(harness))) && !running;
 
   const send = () => {
     if (!canSend || !model) return;
     const value = composeMessage(cards, text);
     setText('');
-    if (fresh) void createAndPrompt({ harness: 'claude-code', folder: draft.folder!, model, effort }, value);
+    if (fresh) void createAndPrompt({ harness: harness!.id, folder: draft.folder!, model, effort }, value);
     else {
       clearCards(session.info.id);
       void prompt(session.info.id, value);
@@ -76,16 +166,14 @@ export function Composer({ session }: { session: SessionView | null }) {
       <div className="column">
         {fresh && (
           <div className="chips-row">
-            <span className="chip outline" title="The harness is chosen before the first prompt and stays for the session">
-              <Icon name="harness" size={14} />
-              Claude Code
-            </span>
+            <HarnessChip />
             <button className="chip outline" onClick={() => void pickFolder()} title={draft.folder ?? undefined}>
               <Icon name="folder" size={14} />
               {draft.folder ? draft.folder.split(/[\\/]/).pop() : 'Choose Folder'}
             </button>
           </div>
         )}
+        {fresh && harness?.state.status === 'failed' && <SetupFailed harness={harness} />}
         {permission && session && (
           <PermissionPrompt
             key={permission.requestId}

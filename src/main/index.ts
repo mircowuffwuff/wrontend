@@ -1,8 +1,14 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
+import type { HarnessEntry } from '@shared/components';
 import type { Settings } from '@shared/settings';
+import { CATALOG } from './components/catalog';
+import { ComponentEngine } from './components/engine';
+import { fakeNpm } from './components/fake-npm';
+import { ComponentStore } from './components/store';
 import { AgentHost } from './host/agent-host';
+import { PROFILES } from './host/profiles';
 import { handle, send } from './ipc';
 import { OllamaClient, resolveBaseUrl } from './ollama/client';
 import { memoryEnvironment, windowsEnvironment } from './ollama/environment';
@@ -43,6 +49,25 @@ const ollamaServer = new OllamaServer({
   baseUrl: () => ollama.baseUrl,
   reachable: () => ollama.version().then(() => true, () => false),
 });
+
+// the smoke test sets Claude Code up with a stand-in for npm: no download, and the user's npm is never run. its first install
+// fails, so the failure is seen too
+let smokeInstalls = 0;
+const components = new ComponentEngine(
+  new ComponentStore(join(app.getPath('userData'), 'components')),
+  CATALOG,
+  (id) => {
+    for (const harness of harnesses()) if (PROFILES[harness.id]?.component === id) send(win, 'harness:changed', harness);
+  },
+  smoke ? { findNpm: async () => fakeNpm(join(app.getPath('userData'), 'fake-npm'), { latest: '0.89.1', chunks: 12, fail: smokeInstalls++ === 0 }) } : {},
+);
+
+// the scripted test agent is offered only where it is useful: in a development run and in the smoke test
+function harnesses(): HarnessEntry[] {
+  return Object.values(PROFILES)
+    .filter((p) => p.component !== null || smoke || !app.isPackaged)
+    .map((p) => ({ id: p.id, name: p.name, state: p.component ? components.state(p.component) : { status: 'installed', version: null } }));
+}
 
 function ollamaAddress(value: Settings): string {
   return resolveBaseUrl(value.ollama.address || process.env.OLLAMA_HOST);
@@ -187,6 +212,13 @@ function registerHandlers(): void {
       send(win, 'ollama:restarting', false);
       void monitor.poll();
     }
+  });
+  handle('harness:list', () => harnesses());
+  handle('harness:install', async (id) => {
+    const component = PROFILES[id]?.component;
+    if (!component) throw new Error(`${id} has nothing to set up`);
+    // a failure reaches the renderer as the harness's state, with npm's output
+    await components.install(component).catch(() => {});
   });
   handle('session:stored', () => sessions().stored());
   handle('session:create', (options) => sessions().create(options));

@@ -14,6 +14,8 @@ export interface LaunchContext {
 export interface HarnessProfile {
   id: string;
   name: string;
+  // the component that brings its program, installed on the harness's first pick; null for one built into wrontend
+  component: string | null;
   launch(ctx: LaunchContext): { command: string; args: string[]; env: Record<string, string> };
 }
 
@@ -27,6 +29,7 @@ function nodeScript(script: string): { command: string; args: string[]; env: Rec
 export const claudeCode: HarnessProfile = {
   id: 'claude-code',
   name: 'Claude Code',
+  component: 'claude-code',
   launch({ proxyUrl, harnessHome }) {
     const pkg = require.resolve('@agentclientprotocol/claude-agent-acp/package.json');
     const base = nodeScript(join(dirname(pkg), 'dist', 'index.js'));
@@ -55,6 +58,7 @@ export const claudeCode: HarnessProfile = {
 export const fake: HarnessProfile = {
   id: 'fake',
   name: 'Fake Agent',
+  component: null,
   launch() {
     return nodeScript(join(__dirname, 'fake-agent.js'));
   },

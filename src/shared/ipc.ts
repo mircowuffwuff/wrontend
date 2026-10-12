@@ -1,5 +1,6 @@
 // the contract between main and the renderer -- every channel, its arguments and its result
 
+import type { HarnessEntry } from './components';
 import type { ModelDetails, ModelSummary, OllamaStatus } from './ollama';
 import type { Effort } from './proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
@@ -22,6 +23,10 @@ export interface InvokeMap {
   'ollama:server': { args: []; result: OllamaServerState };
   'ollama:set-server': { args: [changes: Partial<OllamaServerValues>]; result: OllamaServerState };
   'ollama:restart': { args: []; result: void };
+  // the harnesses to pick from, each with whether it is set up
+  'harness:list': { args: []; result: HarnessEntry[] };
+  // sets a harness up; its progress arrives as harness:changed
+  'harness:install': { args: [id: string]; result: void };
   'session:stored': { args: []; result: StoredSession[] };
   'session:create': { args: [options: CreateSessionOptions]; result: CreatedSession };
   'session:save-items': { args: [id: string, items: unknown[]]; result: void };
@@ -39,6 +44,7 @@ export interface EventMap {
   'ollama:restarting': boolean;
   'settings:changed': Settings;
   'session:event': SessionEvent;
+  'harness:changed': HarnessEntry;
 }
 
 export type InvokeChannel = keyof InvokeMap;

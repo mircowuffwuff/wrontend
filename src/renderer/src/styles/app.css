@@ -253,6 +253,28 @@ button.chip:hover {
   margin-bottom: 8px;
 }
 
+.harness-chip .mono {
+  font-size: 11px;
+}
+
+.setup-failed {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.setup-failed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.setup-failed-row .tool-summary {
+  min-width: 0;
+}
+.setup-failed-row .button {
+  flex-shrink: 0;
+  height: 28px;
+}
+
 .prompt-box {
   display: flex;
   align-items: flex-end;

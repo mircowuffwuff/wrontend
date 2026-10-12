@@ -9,6 +9,7 @@ import { SettingsDialog } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
 import { useDraft } from './state/draft';
+import { startHarnessSync, useHarnesses } from './state/harnesses';
 import { startOllamaSync } from './state/ollama';
 import { startSessionSync, useSessions } from './state/sessions';
 import { startSettingsSync, useSettings } from './state/settings';
@@ -16,6 +17,7 @@ import { startSettingsSync, useSettings } from './state/settings';
 export function App() {
   useEffect(() => startSettingsSync(), []);
   useEffect(() => startOllamaSync(), []);
+  useEffect(() => startHarnessSync(), []);
   useEffect(() => startSessionSync(), []);
   useEffect(() => {
     void bridge.invoke('app:autoprompt').then((auto) => {
@@ -25,6 +27,7 @@ export function App() {
     });
   }, []);
   const session = useSessions((s) => (s.activeId ? s.sessions[s.activeId] : null));
+  const harnessName = useHarnesses((s) => s.list.find((h) => h.id === session?.info.harness)?.name ?? session?.info.harness);
   const settingsOpen = useSettings((s) => s.section !== null);
 
   return (
@@ -34,7 +37,7 @@ export function App() {
         <header className="top-bar drag">
           {session && (
             <>
-              <span className="harness-icon muted" title="Claude Code">
+              <span className="harness-icon muted" title={harnessName}>
                 <Icon name="harness" size={18} />
               </span>
               <Menu

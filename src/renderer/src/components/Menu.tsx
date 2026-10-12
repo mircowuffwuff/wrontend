@@ -16,6 +16,8 @@ export function Menu({
   placement = 'above',
   align = 'start',
   empty,
+  triggerClass = 'picker',
+  title,
 }: {
   trigger: ReactNode;
   items: MenuItem[];
@@ -23,6 +25,8 @@ export function Menu({
   placement?: 'above' | 'below';
   align?: 'start' | 'end';
   empty?: ReactNode;
+  triggerClass?: string;
+  title?: string;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -43,7 +47,7 @@ export function Menu({
 
   return (
     <div ref={root} style={{ position: 'relative' }}>
-      <button className="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button className={triggerClass} title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {trigger}
       </button>
       {open && (

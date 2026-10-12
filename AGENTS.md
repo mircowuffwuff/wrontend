@@ -50,6 +50,7 @@ i like commits across the whole repo nice and streamlined. try and follow these 
   - `settings` — the config file and the Settings screen
   - `components` — the component engine: installing, versioning and resolving the parts wrontend downloads where they are first needed
   - `browser` — the model browser: searching Hugging Face, a repo's quants and what fits on this machine
+  - `updater` — checking harnesses, Ollama and models for updates, and the panel that offers them
   - `build` — packaging and the installer
 
   a commit that touches the whole repo or more than one scope takes no scope. the list grows when a new part of the app earns one.

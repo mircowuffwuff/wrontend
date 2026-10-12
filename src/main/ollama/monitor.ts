@@ -11,6 +11,8 @@ export class OllamaMonitor {
   constructor(
     private readonly client: OllamaClient,
     private readonly onChange: (status: OllamaStatus) => void,
+    // the name a loaded model is shown under: wrontend's copy of a model is shown as the model the user picked
+    private readonly shownAs: (name: string) => string = (name) => name,
     private readonly intervalMs = 3000,
   ) {
     this.last = { baseUrl: client.baseUrl, reachable: false, version: null, loaded: [] };
@@ -35,7 +37,7 @@ export class OllamaMonitor {
     let next: OllamaStatus;
     try {
       const [version, loaded] = await Promise.all([this.client.version(), this.client.loaded()]);
-      next = { baseUrl: this.client.baseUrl, reachable: true, version, loaded };
+      next = { baseUrl: this.client.baseUrl, reachable: true, version, loaded: loaded.map((m) => ({ ...m, name: this.shownAs(m.name) })) };
     } catch {
       next = { baseUrl: this.client.baseUrl, reachable: false, version: null, loaded: [] };
     }

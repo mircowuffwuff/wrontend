@@ -28,6 +28,10 @@ export interface Settings {
     // where wrontend finds Ollama; empty means OLLAMA_HOST, or Ollama's own default
     address: string;
   };
+  models: {
+    // a thinking model without a renderer is routed to a copy of it with one, where wrontend knows the renderer
+    derive: boolean;
+  };
   proxy: {
     backgroundPolicy: BackgroundPolicy;
   };
@@ -36,6 +40,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: 'system', textSize: 'medium', width: 'medium', motion: 'system' },
   ollama: { address: '' },
+  models: { derive: true },
   proxy: { backgroundPolicy: 'local-titles' },
 };
 

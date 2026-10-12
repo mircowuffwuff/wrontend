@@ -1,5 +1,7 @@
 // what main knows about Ollama, in the shape the renderer receives it
 
+import type { ComponentState } from './components';
+
 export interface LoadedModel {
   name: string;
   sizeBytes: number;
@@ -38,3 +40,16 @@ export interface ModelDetails {
   basename: string | null;
 }
 
+// whether a model keeps its earlier reasoning in Ollama, and what wrontend does about it
+export type ModelReasoning =
+  // not a thinking model, or one with a renderer
+  | { status: 'kept' }
+  // wrontend routes the model to a copy of it with a renderer, in this state
+  | { status: 'derived'; state: ComponentState }
+  // reason says why wrontend cannot keep it
+  | { status: 'lost'; reason: string };
+
+// a model as the model picker lists it
+export interface ModelEntry extends ModelSummary {
+  reasoning: ModelReasoning;
+}

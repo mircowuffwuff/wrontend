@@ -1,4 +1,5 @@
-// installed components on disk: every version in its own folder, <root>/<id>/<version>/, and a manifest of which is active.
+// installed components on disk: every version in its own folder, <root>/<id>/<version>/, and a manifest of which is active --
+// for a component kept elsewhere, the manifest alone.
 // an update is a new folder and a switch, a rollback is switching back. a version being installed lives in <version>.partial
 // until it is whole, so a crash halfway leaves nothing the resolver would pick up
 
@@ -28,6 +29,15 @@ export class ComponentStore {
     if (!version) return null;
     const dir = this.dir(id, version);
     return existsSync(dir) ? { version, dir } : null;
+  }
+
+  // the version the manifest names, for a component that lives somewhere other than a folder here -- a model copy lives in Ollama
+  recorded(id: string): string | null {
+    return this.manifest.active[id] ?? null;
+  }
+
+  ids(): string[] {
+    return Object.keys(this.manifest.active);
   }
 
   versions(id: string): string[] {

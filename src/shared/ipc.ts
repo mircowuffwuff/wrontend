@@ -1,7 +1,7 @@
 // the contract between main and the renderer -- every channel, its arguments and its result
 
 import type { HarnessEntry } from './components';
-import type { ModelDetails, ModelSummary, OllamaStatus } from './ollama';
+import type { ModelDetails, ModelEntry, OllamaStatus } from './ollama';
 import type { Effort } from './proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
 import type { AboutInfo, OllamaServerState, OllamaServerValues, Settings, SettingsPatch } from './settings';
@@ -16,7 +16,10 @@ export interface InvokeMap {
   'settings:get': { args: []; result: Settings };
   'settings:set': { args: [patch: SettingsPatch]; result: Settings };
   'ollama:status': { args: []; result: OllamaStatus };
-  'ollama:models': { args: []; result: ModelSummary[] };
+  // Ollama's models with what wrontend does about their reasoning; wrontend's own copies are listed under their originals
+  'ollama:models': { args: []; result: ModelEntry[] };
+  // a model was picked: its copy with a renderer is made now, where it needs one, rather than on the first request
+  'ollama:prepare': { args: [name: string]; result: void };
   'ollama:show': { args: [name: string]; result: ModelDetails | null };
   // the address wrontend uses when Settings names none
   'ollama:default-address': { args: []; result: string };
@@ -45,6 +48,8 @@ export interface EventMap {
   'settings:changed': Settings;
   'session:event': SessionEvent;
   'harness:changed': HarnessEntry;
+  // something about a model's copy changed: the model list is read again
+  'ollama:models-changed': void;
 }
 
 export type InvokeChannel = keyof InvokeMap;

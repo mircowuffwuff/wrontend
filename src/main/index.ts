@@ -4,9 +4,11 @@ import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
 import type { HarnessEntry } from '@shared/components';
 import type { Settings } from '@shared/settings';
 import { CATALOG } from './components/catalog';
+import { DerivedModels, routeModel } from './components/derived';
 import { ComponentEngine } from './components/engine';
 import { fakeNpm } from './components/fake-npm';
 import { NpmDriver } from './components/npm-driver';
+import { RENDERERS } from './components/renderers';
 import { ComponentStore } from './components/store';
 import { AgentHost } from './host/agent-host';
 import { PROFILES } from './host/profiles';
@@ -39,8 +41,11 @@ const monitor = new OllamaMonitor(ollama, (status) => {
   if (status.reachable && !wasReachable) void ollamaServer.noticeStarted();
   wasReachable = status.reachable;
   send(win, 'ollama:status', status);
-});
-const proxy = new ProxyServer(() => ollama.baseUrl);
+}, (name) => derived.originalOf(name) ?? name);
+const proxy = new ProxyServer(
+  () => ollama.baseUrl,
+  (model) => routeModel(components, derived, model),
+);
 
 // the smoke test stores nothing in the user's environment and can never stop their Ollama
 const noProcesses: ProcessControl = { list: async () => [], kill: async () => {}, launch: () => {}, installedApp: () => null };
@@ -52,14 +57,17 @@ const ollamaServer = new OllamaServer({
 });
 
 // the smoke test sets Claude Code up with a stand-in for npm: no download, and the user's npm is never run. its first install
-// fails, so the failure is seen too
+// fails, so the failure is seen too. it reads the user's Ollama models but makes no copies of them
 let smokeInstalls = 0;
+const componentStore = new ComponentStore(join(app.getPath('userData'), 'components'));
 const npm = new NpmDriver(
-  new ComponentStore(join(app.getPath('userData'), 'components')),
+  componentStore,
   CATALOG,
   smoke ? { findNpm: async () => fakeNpm(join(app.getPath('userData'), 'fake-npm'), { latest: '0.89.1', chunks: 12, fail: smokeInstalls++ === 0 }) } : {},
 );
-const components = new ComponentEngine([npm], (id) => {
+const derived = new DerivedModels(ollama, componentStore, RENDERERS, { enabled: () => settings.value.models.derive, readOnly: !!smoke });
+const components = new ComponentEngine([npm, derived], (id) => {
+  if (derived.owns(id)) send(win, 'ollama:models-changed', undefined);
   for (const harness of harnesses()) if (PROFILES[harness.id]?.component === id) send(win, 'harness:changed', harness);
 });
 
@@ -78,6 +86,8 @@ function applySettings(value: Settings): void {
   // the renderer's prefers-color-scheme follows this too, and so do the native window buttons
   nativeTheme.themeSource = value.appearance.theme;
   host?.setBackgroundPolicy(value.proxy.backgroundPolicy);
+  // the picker's notes on reasoning follow the copies being turned on or off
+  send(win, 'ollama:models-changed', undefined);
   const address = ollamaAddress(value);
   if (address !== ollama.baseUrl) {
     ollama.baseUrl = address;
@@ -194,7 +204,15 @@ function registerHandlers(): void {
     return settings.update(patch);
   });
   handle('ollama:status', () => monitor.status);
-  handle('ollama:models', () => ollama.models());
+  handle('ollama:models', async () => {
+    const models = await derived.models();
+    return Promise.all(
+      models.map(async (m) => ({ ...m, reasoning: await derived.reasoning(components, m.name).catch(() => ({ status: 'kept' as const })) })),
+    );
+  });
+  handle('ollama:prepare', async (name) => {
+    await routeModel(components, derived, name, true);
+  });
   handle('ollama:show', async (name) => {
     try {
       return await ollama.show(name);

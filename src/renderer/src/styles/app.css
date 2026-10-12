@@ -245,6 +245,140 @@ button.chip:hover {
   font-weight: 500;
 }
 
+/* the stats card under the greeting, about as compact as the reference's */
+
+.stats-card {
+  max-width: 480px;
+  margin: 28px 0 24px;
+  padding: 10px 12px 12px;
+  border-radius: var(--leaf-md);
+  background: var(--sidebar);
+}
+.stats-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.stats-tabs {
+  display: inline-flex;
+  gap: 2px;
+}
+.stats-tabs button {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--leaf-sm);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.stats-tabs button:hover {
+  color: var(--text);
+}
+.stats-tabs button.on {
+  background: var(--raised);
+  color: var(--text);
+}
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 7px 5px;
+  border-radius: 0 6px 0 6px;
+  background: var(--raised);
+}
+.stat-label {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.stat-value {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stat-value.model {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 19.5px;
+}
+.heatmap {
+  display: grid;
+  grid-template-rows: repeat(7, auto);
+  grid-template-columns: repeat(26, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+.heat-cell {
+  aspect-ratio: 1;
+  border-radius: 0 40% 0 40%;
+  background: var(--raised);
+}
+.heat-cell.future {
+  background: none;
+}
+.heat-cell.level-1 {
+  background: color-mix(in srgb, var(--leaf-green) 30%, var(--raised));
+}
+.heat-cell.level-2 {
+  background: color-mix(in srgb, var(--leaf-green) 55%, var(--raised));
+}
+.heat-cell.level-3 {
+  background: color-mix(in srgb, var(--leaf-green) 78%, var(--raised));
+}
+.heat-cell.level-4 {
+  background: var(--leaf-green);
+}
+.heat-cell.outside {
+  opacity: 0.35;
+}
+.stats-line {
+  margin: 4px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+/* the Models tab keeps the roomier spacing of a table read row by row */
+.model-stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(4, auto);
+  column-gap: 20px;
+  row-gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+.model-stats-row {
+  display: contents;
+}
+.model-stats .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.model-stats .stat-label {
+  font-size: 12px;
+}
+.model-name {
+  position: relative;
+  padding-bottom: 5px;
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-share {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--leaf-green);
+}
+
 /* prompt */
 
 .composer {

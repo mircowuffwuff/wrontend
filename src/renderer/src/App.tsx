@@ -7,6 +7,7 @@ import { Leaf } from './components/Leaf';
 import { Menu } from './components/Menu';
 import { ModelBrowser } from './components/ModelBrowser';
 import { SettingsDialog } from './components/Settings';
+import { StatsCard } from './components/StatsCard';
 import { Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
 import { UpdaterPanel } from './components/Updater';
@@ -76,6 +77,7 @@ export function App() {
                 <Leaf size={20} />
                 What are we growing today?
               </h1>
+              <StatsCard />
             </div>
           </div>
         )}

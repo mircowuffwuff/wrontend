@@ -348,6 +348,7 @@ function registerHandlers(): void {
   handle('session:set-model', (id, model) => sessions().setModel(id, model));
   handle('session:set-effort', (id, effort) => sessions().setEffort(id, effort));
   handle('session:set-mode', (id, modeId) => sessions().setMode(id, modeId));
+  handle('stats:summary', () => sessions().usageSummary());
 }
 
 // any restart may have installed a waiting Ollama update, so the updater looks again once Ollama is back

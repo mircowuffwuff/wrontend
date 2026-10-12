@@ -7,6 +7,7 @@ import type { Effort } from './proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
 import type { AboutInfo, OllamaServerState, OllamaServerValues, Settings, SettingsPatch } from './settings';
 import type { UpdatesState } from './updates';
+import type { UsageSummary } from './usage';
 
 export interface InvokeMap {
   'window:minimize': { args: []; result: void };
@@ -64,6 +65,8 @@ export interface InvokeMap {
   'session:set-model': { args: [id: string, model: string]; result: void };
   'session:set-effort': { args: [id: string, effort: Effort]; result: void };
   'session:set-mode': { args: [id: string, modeId: string]; result: void };
+  // every session's usage summed up for the new-session stats card, deleted sessions' included
+  'stats:summary': { args: []; result: UsageSummary };
 }
 
 export interface EventMap {

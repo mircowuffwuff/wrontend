@@ -6,10 +6,12 @@ import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BackgroundPolicy, Effort, RequestStats } from '@shared/proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, SessionInfo, SessionModes, StoredSession } from '@shared/session';
+import type { UsageSummary } from '@shared/usage';
 import type { ProxyServer } from '../proxy/server';
 import { PROFILES } from './profiles';
 import { AgentSession } from './session';
 import { FolderStore, SessionStore } from './store';
+import { summarize } from './usage-summary';
 
 interface Entry {
   info: SessionInfo;
@@ -152,6 +154,10 @@ export class AgentHost {
     this.sleep(id);
     this.sessions.delete(id);
     this.store.remove(id);
+  }
+
+  usageSummary(): UsageSummary {
+    return summarize(this.store.usage());
   }
 
   disposeAll(): void {

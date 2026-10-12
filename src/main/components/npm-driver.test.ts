@@ -67,6 +67,25 @@ describe('the npm driver', () => {
     expect(engine.state('tool')).toEqual({ status: 'installed', version: '1.2.0' });
   });
 
+  it('keeps the version an update replaced and removes older ones', async () => {
+    const { store, engine, options } = setup({ latest: '1.2.0' });
+    await engine.install('tool');
+    options.latest = '1.3.0';
+    await engine.install('tool');
+    options.latest = '1.4.0';
+    await engine.install('tool');
+    expect(store.versions('tool').sort()).toEqual(['1.3.0', '1.4.0']);
+    expect(existsSync(store.dir('tool', '1.2.0'))).toBe(false);
+  });
+
+  it('tells the latest version without installing it', async () => {
+    const { store, npm, root } = setup({ latest: '1.3.0' });
+    expect(await npm.latest('tool')).toBe('1.3.0');
+    expect(store.versions('tool')).toEqual([]);
+    expect(existsSync(join(store.root, '.npm-cache'))).toBe(false);
+    expect(existsSync(join(root, 'npm'))).toBe(true);
+  });
+
   it('refuses a latest version below the floor', async () => {
     const { engine } = setup({ latest: '1.1.9' });
     await expect(engine.install('tool')).rejects.toThrow('older than the 1.2.0 wrontend needs');

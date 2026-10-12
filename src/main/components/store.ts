@@ -91,6 +91,19 @@ export class ComponentStore {
     this.write();
   }
 
+  // removes every version but these. a version whose files are in use -- a session still runs its program -- stays until a
+  // later prune
+  prune(id: string, keep: string[]): void {
+    for (const version of this.versions(id)) {
+      if (keep.includes(version)) continue;
+      try {
+        rmSync(this.dir(id, version), { recursive: true });
+      } catch {
+        // in use; tried again after the next update
+      }
+    }
+  }
+
   // what a run that ended mid-install left behind
   sweep(): void {
     for (const id of readdirSync(this.root, { withFileTypes: true })) {

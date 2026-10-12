@@ -57,6 +57,17 @@ export class NpmDriver implements Driver {
     return active ? binIn(active.dir, entry) : null;
   }
 
+  // the version npm's latest tag points at, which an install would set up -- the updater's check
+  async latest(id: string): Promise<string> {
+    const entry = this.entry(id);
+    const cache = join(this.store.root, '.npm-cache');
+    try {
+      return await this.view(await this.findNpm(this.store), entry, cache);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  }
+
   async install(id: string, report: (step: string, bytes: number) => void): Promise<void> {
     const entry = this.entry(id);
     const cache = join(this.store.root, '.npm-cache');
@@ -66,8 +77,7 @@ export class NpmDriver implements Driver {
       const npm = await this.findNpm(this.store);
 
       report('Looking up the latest version', 0);
-      const found = await runNpm(npm, ['view', `${entry.npm}@latest`, 'version', '--json', ...quiet(cache)], this.store.root);
-      version = latestFrom(found);
+      version = await this.view(npm, entry, cache);
       if (compareVersions(version, entry.floor) < 0) {
         throw new InstallError(`npm offers ${entry.name} ${version}, older than the ${entry.floor} wrontend needs.`, `${entry.npm}@latest is ${version}`);
       }
@@ -88,7 +98,10 @@ export class NpmDriver implements Driver {
         measure.stop();
       }
       if (!binIn(dir, entry)) throw new InstallError(`npm installed ${entry.name} ${version}, but its program is missing.`, `${entry.npm} has no bin called ${entry.bin}`);
+      const previous = this.store.active(id)?.version;
       this.store.finish(id, version);
+      // the version updated from stays, to switch back to; older ones go
+      this.store.prune(id, previous ? [version, previous] : [version]);
     } catch (cause) {
       if (version) this.store.abandon(id, version);
       throw cause instanceof InstallError ? cause : new InstallError(`${entry.name} could not be set up.`, String((cause as Error).stack ?? cause));
@@ -96,6 +109,10 @@ export class NpmDriver implements Driver {
       // the downloads are unpacked into the version's folder; a second copy of them is not kept
       rmSync(cache, { recursive: true, force: true });
     }
+  }
+
+  private async view(npm: Npm, entry: CatalogEntry, cache: string): Promise<string> {
+    return latestFrom(await runNpm(npm, ['view', `${entry.npm}@latest`, 'version', '--json', ...quiet(cache)], this.store.root));
   }
 
   // npm reports no download progress: what it has unpacked into the version's folder is measured instead, which ends at the

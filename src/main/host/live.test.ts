@@ -1,5 +1,6 @@
 // a real end-to-end run: Claude Code through claude-agent-acp, through the proxy, against the local Ollama
-// off by default -- WRONTEND_LIVE=1 turns it on, WRONTEND_MODEL picks the model
+// off by default -- WRONTEND_LIVE=1 turns it on, and WRONTEND_MODEL names the Ollama model to run, which it requires: no model
+// of any one machine is assumed
 
 import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,6 +14,8 @@ import { ProxyServer } from '../proxy/server';
 import { AgentHost } from './agent-host';
 
 const live = process.env.WRONTEND_LIVE === '1';
+const model = process.env.WRONTEND_MODEL;
+if (live && !model) throw new Error('WRONTEND_LIVE=1 needs WRONTEND_MODEL set to an Ollama model to run');
 
 describe.skipIf(!live)('Claude Code end to end', () => {
   it(
@@ -45,8 +48,7 @@ describe.skipIf(!live)('Claude Code end to end', () => {
       const program = await installedProgram('claude-code');
       host = new AgentHost(proxy, dataDir, () => program, emit);
 
-      const model = process.env.WRONTEND_MODEL ?? 'qwen3.8:27b-ud-iq3_s-derived-renderer';
-      const { info } = await host.create({ harness: 'claude-code', folder, model, effort: 'on' });
+      const { info } = await host.create({ harness: 'claude-code', folder, model: model!, effort: 'on' });
       const ended = new Promise<SessionEvent>((resolve) => {
         const check = setInterval(() => {
           const end = events.find((e) => e.type === 'turn-end' || e.type === 'exit');

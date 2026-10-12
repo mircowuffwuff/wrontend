@@ -42,7 +42,7 @@ function fakeOllama(seen: Seen[]): Promise<Server> {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
-const settings: RouteSettings = { model: 'qwen3.8:27b-ud-iq3_s-derived-renderer', effort: 'on', backgroundPolicy: 'pass' };
+const settings: RouteSettings = { model: 'some-model:27b', effort: 'on', backgroundPolicy: 'pass' };
 
 const request = {
   model: MAIN_MODEL,

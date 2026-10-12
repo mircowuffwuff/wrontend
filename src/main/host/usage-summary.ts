@@ -1,5 +1,6 @@
-// sums every session's usage log up into what the new-session stats card shows. days and hours are local time, as the
-// person reading the card lives them; a range of 30 days is today and the 29 days before it
+// sums every session's usage log up into what the new-session stats card shows. a message is a prompt the user sent or a
+// reply the model sent -- every main request answered without an error, each step of a tool loop included. days and hours
+// are local time, as the person reading the card lives them; a range of 30 days is today and the 29 days before it
 
 import type { ModelUsage, RangeUsage, SessionUsage, StatsRange, UsageRecord, UsageSummary } from '@shared/usage';
 
@@ -8,7 +9,7 @@ const RANGE_DAYS: Record<StatsRange, number | null> = { all: null, '30d': 30, '7
 export function summarize(usage: SessionUsage[], now = Date.now()): UsageSummary {
   const activity: Record<string, number> = {};
   for (const { records } of usage) {
-    for (const r of records) if (r.type === 'prompt') activity[dayKey(r.at)] = (activity[dayKey(r.at)] ?? 0) + 1;
+    for (const r of records) if (messageModel(r) !== null) activity[dayKey(r.at)] = (activity[dayKey(r.at)] ?? 0) + 1;
   }
   const ranges = {} as Record<StatsRange, RangeUsage>;
   for (const [range, days] of Object.entries(RANGE_DAYS) as [StatsRange, number | null][]) {
@@ -44,13 +45,14 @@ function summarizeRange(usage: SessionUsage[], from: number): RangeUsage {
     const inRange = records.filter((r: UsageRecord) => r.at >= from);
     if (inRange.length > 0) sessions++;
     for (const r of inRange) {
-      if (r.type === 'prompt') {
+      const model = messageModel(r);
+      if (model !== null) {
         messages++;
         days.add(dayKey(r.at));
         hours[new Date(r.at).getHours()]++;
-        tally(r.model).messages++;
-        continue;
+        tally(model).messages++;
       }
+      if (r.type === 'prompt') continue;
       const s = r.stats;
       const t = tally(s.model);
       const used = (s.inputTokens ?? 0) + (s.outputTokens ?? 0);
@@ -87,6 +89,13 @@ function summarizeRange(usage: SessionUsage[], from: number): RangeUsage {
     favoriteModel: favorite && favorite.messages > 0 ? favorite.model : null,
     models: byModel,
   };
+}
+
+// the model a message went to or came from, or null for a record that is no message
+function messageModel(r: UsageRecord): string | null {
+  if (r.type === 'prompt') return r.model;
+  const s = r.stats;
+  return s.kind === 'main' && s.status === 200 && !s.error ? s.model : null;
 }
 
 export function dayKey(at: number): string {

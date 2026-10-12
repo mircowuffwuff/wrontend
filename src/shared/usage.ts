@@ -32,6 +32,7 @@ export interface ModelUsage {
 
 export interface RangeUsage {
   sessions: number;
+  // the prompts the user sent and the replies the model sent
   messages: number;
   // input and output of every request, background requests included
   tokens: number;

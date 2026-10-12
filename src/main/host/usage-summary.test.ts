@@ -40,12 +40,20 @@ const usage: SessionUsage[] = [
 describe('the stats summary', () => {
   it('counts everything in All', () => {
     const all = summarize(usage, NOW).ranges.all;
-    expect(all).toMatchObject({ sessions: 2, messages: 3, tokens: 1050 + 1100 + 210, activeDays: 3, peakHour: 18, favoriteModel: 'small' });
+    expect(all).toMatchObject({ sessions: 2, messages: 5, tokens: 1050 + 1100 + 210, activeDays: 3, peakHour: 18, favoriteModel: 'small' });
+  });
+
+  it('counts prompts and the replies to them as messages, but no background or failed request', () => {
+    const { models } = summarize(usage, NOW).ranges.all;
+    expect(models.map((m) => [m.model, m.messages])).toEqual([
+      ['small', 3],
+      ['big', 2],
+    ]);
   });
 
   it('leaves out what happened before a range starts', () => {
     const { ranges } = summarize(usage, NOW);
-    expect(ranges['30d']).toMatchObject({ sessions: 1, messages: 2, tokens: 1310, activeDays: 2 });
+    expect(ranges['30d']).toMatchObject({ sessions: 1, messages: 3, tokens: 1310, activeDays: 2 });
     expect(ranges['7d'].sessions).toBe(1);
   });
 
@@ -65,7 +73,7 @@ describe('the stats summary', () => {
   });
 
   it('keeps messages per local day', () => {
-    expect(summarize(usage, NOW).activity).toEqual({ [dayKey(at(40, 9))]: 1, [dayKey(at(3, 18))]: 1, [dayKey(at(0, 18))]: 1 });
+    expect(summarize(usage, NOW).activity).toEqual({ [dayKey(at(40, 9))]: 2, [dayKey(at(3, 18))]: 2, [dayKey(at(0, 18))]: 1 });
   });
 
   it('has nothing to name when nothing was sent', () => {

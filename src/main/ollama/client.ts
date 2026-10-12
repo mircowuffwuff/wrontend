@@ -27,15 +27,17 @@ export class OllamaClient {
     return (await res.json()) as T;
   }
 
-  private async post<T>(path: string, body: unknown, timeoutMs = this.timeoutMs): Promise<T> {
+  private async post<T>(path: string, body: unknown, timeoutMs = this.timeoutMs, method = 'POST'): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
+      method,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) throw new Error((await errorOf(res)) ?? `${path} answered ${res.status}`);
-    return (await res.json()) as T;
+    // /api/delete answers with an empty body
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   async version(): Promise<string> {
@@ -73,6 +75,16 @@ export class OllamaClient {
   // manifest and a small layer are written. it takes seconds, longer than a read
   async create(request: CreateRequest): Promise<void> {
     await this.post('/api/create', { ...request, stream: false }, 120_000);
+  }
+
+  // removes the model's manifest; Ollama removes a blob once no other model uses it
+  async delete(name: string): Promise<void> {
+    await this.post('/api/delete', { model: name }, 30_000, 'DELETE');
+  }
+
+  // an empty prompt with no keep-alive unloads the model without generating anything
+  async unload(name: string): Promise<void> {
+    await this.post('/api/generate', { model: name, keep_alive: 0, stream: false }, 30_000);
   }
 }
 

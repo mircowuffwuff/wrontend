@@ -6,7 +6,7 @@ import type { ComponentStore } from '../components/store';
 import { compareVersions } from '../components/version';
 import type { Found, UpdateSource } from './updater';
 
-export function npmSource(npm: Pick<NpmDriver, 'latest'>, store: ComponentStore, catalog: CatalogEntry[]): UpdateSource {
+export function npmUpdates(npm: Pick<NpmDriver, 'latest'>, store: ComponentStore, catalog: CatalogEntry[]): UpdateSource {
   return {
     group: 'harnesses',
     async check() {

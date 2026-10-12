@@ -13,6 +13,7 @@ export interface Found {
   name: string;
   current: string | null;
   available: string;
+  bytes?: number;
   // the engine component an update sets up again
   component: string;
 }
@@ -70,6 +71,7 @@ export class Updater {
           name: f.name,
           current: f.current,
           available: f.available,
+          ...(f.bytes !== undefined ? { bytes: f.bytes } : {}),
           pinned: this.choices.pinned.includes(f.id),
           state: this.progress.get(f.component) ?? null,
         });

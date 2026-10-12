@@ -4,6 +4,7 @@
 import type { Hardware, RepoSummary } from '@shared/models';
 import type { PullProgress } from '../ollama/client';
 import type { PullingOllama } from '../components/pull';
+import type { InstalledModels, ManifestReader } from '../updates/model-source';
 import type { ModelSource, RepoFile } from './huggingface';
 
 const GB = 1e9;
@@ -55,3 +56,22 @@ export const fakePulling: PullingOllama = {
     throw new Error('this run downloads nothing');
   },
 };
+
+// the updater's view of Ollama in the smoke test: one model, whose registry has a newer upload of its weights since
+export const fakeInstalled: InstalledModels = {
+  async models() {
+    return [{ name: 'hf.co/smoke-test/Qwen3.8-27B-GGUF:UD-Q4_K_M', digest: '1'.repeat(64) }];
+  },
+  async blobs() {
+    return ['a'.repeat(64), 'b'.repeat(64)];
+  },
+};
+
+export const fakeManifests: ManifestReader = async () => ({
+  digest: '2'.repeat(64),
+  layers: [
+    { mediaType: 'application/vnd.ollama.image.model', digest: `sha256:${'c'.repeat(64)}`, size: Math.round(12.0 * GB) },
+    { mediaType: 'application/vnd.ollama.image.projector', digest: `sha256:${'b'.repeat(64)}`, size: Math.round(0.93 * GB) },
+    { mediaType: 'application/vnd.ollama.image.template', digest: `sha256:${'d'.repeat(64)}`, size: 410 },
+  ],
+});

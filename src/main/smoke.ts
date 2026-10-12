@@ -398,38 +398,58 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await waitFor(`!document.querySelector('.browser')`);
   });
 
-  // the stand-in registry publishes Claude Code 0.90.0 once 0.89.1 is set up: the updater offers it, pins it and installs it
+  // the stand-in registry publishes Claude Code 0.90.0 once 0.89.1 is set up, and the stand-in Ollama has a model with a newer
+  // upload: the updater offers both, pins one and installs it
+  const icon = `document.querySelector('.status button[aria-label="Updates"]')`;
+  const rowOf = (name: string) => `[...document.querySelectorAll('.update-row')].find((r) => r.querySelector('.update-name').textContent.startsWith(${JSON.stringify(name)}))`;
+  const pickFrom = async (row: string, item: string) => {
+    const entry = `[...document.querySelectorAll('.update-row .menu-item')].find((b) => b.textContent.startsWith(${JSON.stringify(item)}))`;
+    await js(`${row}.querySelector('button[title="More"]').click()`);
+    await waitFor(entry);
+    await js(`${entry}.click()`);
+  };
+  const claude = rowOf('Claude Code');
+  const model = rowOf('hf.co/smoke-test/');
   await step('17-updater', async () => {
-    const icon = `document.querySelector('.status button[aria-label="Updates"]')`;
-    const row = `document.querySelector('.update-row')`;
-    const headButton = (text: string) => `[...document.querySelectorAll('.updater-head button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)})`;
     await js(`window.wrontend.invoke('updates:check')`);
     await waitFor(`${icon}.classList.contains('attention')`);
     await js(`${icon}.click()`);
-    await waitFor(`${row}?.textContent.includes('0.89.1 → 0.90.0')`);
-    const group = await js<string>(`document.querySelector('.update-group .settings-area-label').textContent`);
-    if (group !== 'Harnesses') throw new Error(`Claude Code's row is under ${group}`);
+    await waitFor(`${claude}?.textContent.includes('0.89.1 → 0.90.0') && ${model}`);
+    const groups = await js<string[]>(`[...document.querySelectorAll('.update-group .settings-area-label')].map((l) => l.textContent)`);
+    if (groups.join() !== 'Harnesses,Models') throw new Error(`the groups read ${JSON.stringify(groups)}`);
     await shot('17-updater');
 
-    await js(`${row}.querySelector('button[title="More"]').click()`);
+    await js(`${claude}.querySelector('button[title="More"]').click()`);
     await waitFor(`document.querySelector('.update-row .menu')`);
     await shot('17-updater-menu');
     await js(`[...document.querySelectorAll('.update-row .menu-item')].find((b) => b.textContent.startsWith('Pin')).click()`);
-    await waitFor(`${row}.classList.contains('pinned') && !${headButton('Update All')} && !${icon}.classList.contains('attention')`);
+    await waitFor(`${claude}.classList.contains('pinned') && ![...${claude}.querySelectorAll('button')].some((b) => b.textContent === 'Update')`);
     await shot('17-updater-pinned');
-    await js(`${row}.querySelector('button[title="More"]').click()`);
-    await js(`[...document.querySelectorAll('.update-row .menu-item')].find((b) => b.textContent.startsWith('Unpin')).click()`);
-    await waitFor(`!${row}.classList.contains('pinned') && ${headButton('Update All')}`);
+    await pickFrom(claude, 'Unpin');
+    await waitFor(`!${claude}.classList.contains('pinned')`);
 
-    await js(`[...${row}.querySelectorAll('button')].find((b) => b.textContent === 'Update').click()`);
-    await waitFor(`/Downloading Claude Code 0.90.0 · [1-9]/.test(${row}?.textContent ?? '')`);
+    await js(`[...${claude}.querySelectorAll('button')].find((b) => b.textContent === 'Update').click()`);
+    await waitFor(`/Downloading Claude Code 0.90.0 · [1-9]/.test(${claude}?.textContent ?? '')`);
     await shot('17-updater-updating');
     if ((await js<string>(`document.querySelector('.harness-chip').textContent`)).includes('Setting up')) throw new Error('the harness reads as being set up while it updates');
-    await waitFor(`!${row} && document.querySelector('.updater-empty')`, 20_000);
-    await shot('17-updater-done');
+    await waitFor(`!${claude}`, 20_000);
     const state = await js<{ status: string; version?: string }>(`window.wrontend.invoke('harness:list').then((l) => l.find((h) => h.id === 'claude-code').state)`);
     if (state.status !== 'installed' || state.version !== '0.90.0') throw new Error(`Claude Code is ${JSON.stringify(state)} after updating it`);
-    if (await js<boolean>(`${icon}.classList.contains('attention')`)) throw new Error('the icon still asks for attention with nothing out of date');
+  });
+  // the model's pull stops halfway and fails: the failure stays on its row, and skipping the upload empties the panel
+  await step('18-updater-model', async () => {
+    const text = await js<string>(`${model}.querySelector('.update-versions').textContent`);
+    if (text !== 'New upload · 12.0 GB to download') throw new Error(`the model's row reads ${text}`);
+    await js(`[...${model}.querySelectorAll('button')].find((b) => b.textContent === 'Update').click()`);
+    await waitFor(`${model}?.querySelector('.progress')`);
+    await shot('18-model-updating');
+    await waitFor(`${model}?.querySelector('.update-failure')`, 10_000);
+    await js(`${model}.querySelector('.update-failure').click()`);
+    if (!(await js<boolean>(`[...${model}.querySelectorAll('button')].some((b) => b.textContent === 'Try Again')`))) throw new Error('a failed update offers no Try Again');
+    await shot('18-model-failed');
+    await pickFrom(model, 'Skip This Version');
+    await waitFor(`!${model} && document.querySelector('.updater-empty') && !${icon}.classList.contains('attention')`);
+    await shot('18-updater-empty');
     await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
     await waitFor(`!document.querySelector('.updater')`);
   });

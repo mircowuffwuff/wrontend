@@ -14,6 +14,8 @@ export interface UpdateEntry {
   // null where nothing names the installed version
   current: string | null;
   available: string;
+  // what the update downloads, where that is known before it starts
+  bytes?: number;
   // the user keeps it as it is: shown muted, left out of Update All, and the icon does not count it
   pinned: boolean;
   // while it updates, and when the update failed

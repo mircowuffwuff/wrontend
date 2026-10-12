@@ -20,6 +20,17 @@ function megabytes(bytes: number): string {
   return `${Math.round(bytes / 1e6)} MB`;
 }
 
+// file sizes as Hugging Face and npm state them, in decimal units
+function size(bytes: number): string {
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : megabytes(bytes);
+}
+
+// a model has no version to show: its row says what a pull of the same name brings
+function versionText(entry: UpdateEntry): string {
+  if (entry.group === 'models') return entry.bytes ? `New upload · ${size(entry.bytes)} to download` : 'New template or parameters';
+  return `${entry.current ? `${entry.current} → ` : ''}${entry.available}`;
+}
+
 function checkedText(checking: boolean, checkedAt: number | null, now: number): string {
   if (checking) return 'Checking…';
   if (checkedAt === null) return 'Not checked yet';
@@ -123,10 +134,14 @@ function UpdateRow({ entry }: { entry: UpdateEntry }) {
         title="More"
         trigger={<Icon name="more" />}
         items={[
-          { key: 'skip', label: 'Skip This Version', detail: `Not offered again until a newer one than ${entry.available}` },
+          {
+            key: 'skip',
+            label: 'Skip This Version',
+            detail: entry.group === 'models' ? 'Not offered again until a newer upload than this one' : `Not offered again until a newer one than ${entry.available}`,
+          },
           entry.pinned
             ? { key: 'unpin', label: 'Unpin', detail: 'Offers its updates again' }
-            : { key: 'pin', label: 'Pin', detail: `Keeps ${entry.current ?? 'the installed version'} until unpinned` },
+            : { key: 'pin', label: 'Pin', detail: `Keeps ${entry.group === 'models' || !entry.current ? 'the installed version' : entry.current} until unpinned` },
         ]}
         onPick={(key) => {
           if (key === 'skip') void bridge.invoke('updates:skip', entry.id);
@@ -151,7 +166,7 @@ function UpdateDetail({ entry, state }: { entry: UpdateEntry; state: ComponentSt
       <>
         <span className="setting-description">
           {state.step}
-          {state.bytes > 0 && ` · ${state.total ? `${megabytes(state.bytes)} of ${megabytes(state.total)}` : megabytes(state.bytes)}`}
+          {state.bytes > 0 && ` · ${state.total ? `${size(state.bytes)} of ${size(state.total)}` : size(state.bytes)}`}
         </span>
         {state.total ? (
           <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor((state.bytes / state.total) * 100)}>
@@ -174,9 +189,8 @@ function UpdateDetail({ entry, state }: { entry: UpdateEntry; state: ComponentSt
     );
   }
   return (
-    <span className="update-versions mono">
-      {entry.current ? `${entry.current} → ` : ''}
-      {entry.available}
+    <span className={`update-versions${entry.group === 'models' ? '' : ' mono'}`} title={entry.group === 'models' ? `${entry.current} → ${entry.available}` : undefined}>
+      {versionText(entry)}
     </span>
   );
 }

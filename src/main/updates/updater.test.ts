@@ -7,7 +7,7 @@ import { ComponentEngine } from '../components/engine';
 import { fakeNpm, type FakeNpmOptions } from '../components/fake-npm';
 import { NpmDriver, type CatalogEntry } from '../components/npm-driver';
 import { ComponentStore } from '../components/store';
-import { npmSource } from './npm-source';
+import { npmUpdates } from './npm-source';
 import { Updater, type Found, type UpdateSource } from './updater';
 
 const TOOL: Found = { id: 'tool', name: 'Tool', current: '1.0.0', available: '1.1.0', component: 'tool' };
@@ -137,13 +137,13 @@ function npmSetup(fake: FakeNpmOptions) {
 describe('the npm source', () => {
   it('offers nothing for a component that is not installed', async () => {
     const { store, npm } = npmSetup({ latest: '1.1.0' });
-    expect(await npmSource(npm, store, [ENTRY]).check()).toEqual([]);
+    expect(await npmUpdates(npm, store, [ENTRY]).check()).toEqual([]);
   });
 
   it('offers a newer latest than the active version, and nothing once it is installed', async () => {
     const { store, npm, engine, options } = npmSetup({ latest: '1.0.0' });
     await engine.install('tool');
-    const check = npmSource(npm, store, [ENTRY]);
+    const check = npmUpdates(npm, store, [ENTRY]);
     expect(await check.check()).toEqual([]);
     options.latest = '1.1.0';
     expect(await check.check()).toEqual([{ id: 'tool', name: 'Tool', current: '1.0.0', available: '1.1.0', component: 'tool' }]);

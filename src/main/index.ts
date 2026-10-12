@@ -14,7 +14,7 @@ import { ComponentStore } from './components/store';
 import { AgentHost } from './host/agent-host';
 import { PROFILES } from './host/profiles';
 import { handle, send } from './ipc';
-import { fakeHardware, fakePulling, fakeSource } from './models/fake-source';
+import { fakeHardware, fakeInstalled, fakeManifests, fakePulling, fakeSource } from './models/fake-source';
 import { HuggingFace, repoDetails, type ModelSource } from './models/huggingface';
 import { OllamaClient, resolveBaseUrl } from './ollama/client';
 import { memoryEnvironment, windowsEnvironment } from './ollama/environment';
@@ -23,7 +23,8 @@ import { OllamaMonitor } from './ollama/monitor';
 import { OllamaServer, windowsProcesses, type ProcessControl } from './ollama/server-settings';
 import { ProxyServer } from './proxy/server';
 import { SettingsStore } from './settings/store';
-import { npmSource } from './updates/npm-source';
+import { modelUpdates } from './updates/model-source';
+import { npmUpdates } from './updates/npm-source';
 import { Updater } from './updates/updater';
 import { prepareSmoke, runSmoke, smokeFolder } from './smoke';
 
@@ -99,7 +100,8 @@ const components = new ComponentEngine([npm, derived, pulls], (id, state) => {
   updater.componentChanged(id, state);
 });
 const updater = new Updater(
-  [npmSource(npm, componentStore, CATALOG)],
+  // the smoke test's models and their registry are stand-ins: the user's Ollama and the network are never asked
+  [npmUpdates(npm, componentStore, CATALOG), smoke ? modelUpdates(fakeInstalled, fakeManifests) : modelUpdates(ollama)],
   join(app.getPath('userData'), 'updates.json'),
   (component) => components.install(component),
   (state) => send(win, 'updates:changed', state),

@@ -11,11 +11,13 @@ import {
   type ClientConnection,
   type RequestPermissionResponse,
   type SessionModeState,
+  type StopReason,
 } from '@agentclientprotocol/sdk';
 import type { RouteSettings } from '@shared/proxy';
 import type { PermissionRequest, SessionEvent, SessionModes } from '@shared/session';
 import type { RouteHandle } from '../proxy/server';
 import type { HarnessProfile } from './profiles';
+import { TurnEdits } from './turn-edits';
 
 const STDERR_KEEP = 40;
 
@@ -37,6 +39,7 @@ export class AgentSession {
   private readonly pending = new Map<string, (answer: RequestPermissionResponse) => void>();
   private readonly stderr: string[] = [];
   private turn: Promise<void> | null = null;
+  private turnEdits: TurnEdits | null = null;
   // set when wrontend itself stops the process, whose exit is then no news
   private disposing = false;
   private lastModes: SessionModes | null = null;
@@ -85,6 +88,7 @@ export class AgentSession {
     );
     const app = client({ name: 'wrontend' })
       .onNotification('session/update', ({ params }) => {
+        this.turnEdits?.note(params.update);
         this.o.emit({ sessionId: this.o.id, type: 'update', update: params.update });
       })
       .onRequest('session/request_permission', ({ params, signal }) => {
@@ -127,16 +131,21 @@ export class AgentSession {
     if (this.turn) throw new Error('a turn is already running');
     const agent = this.connection.agent;
     const sessionId = this.acpSessionId;
+    const edits = new TurnEdits();
+    this.turnEdits = edits;
     this.o.emit({ sessionId: this.o.id, type: 'turn-start' });
+    // a turn that stopped or failed may still have changed files, so every end reports them
+    const end = async (how: { stopReason: StopReason | 'error'; error?: string }) =>
+      this.o.emit({ sessionId: this.o.id, type: 'turn-end', ...how, edits: await edits.files(this.o.folder).catch(() => []) });
     this.turn = agent
       .request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] })
       .then(
-        (response) => this.o.emit({ sessionId: this.o.id, type: 'turn-end', stopReason: response.stopReason }),
-        (cause: unknown) =>
-          this.o.emit({ sessionId: this.o.id, type: 'turn-end', stopReason: 'error', error: describe(cause, this.stderr) }),
+        (response) => end({ stopReason: response.stopReason }),
+        (cause: unknown) => end({ stopReason: 'error', error: describe(cause, this.stderr) }),
       )
       .finally(() => {
         this.turn = null;
+        this.turnEdits = null;
         this.closeAllPermissions();
       });
     return this.turn;

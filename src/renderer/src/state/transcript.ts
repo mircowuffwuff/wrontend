@@ -1,6 +1,7 @@
-// turns the stream of ACP session updates into the items the transcript shows, and those into the blocks it draws
+// turns the stream of ACP session updates into the items the transcript shows
 
-import type { PlanEntry, SessionUpdate, ToolCallContent, ToolCallStatus, ToolKind } from '@agentclientprotocol/sdk';
+import type { PlanEntry, SessionUpdate, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolKind } from '@agentclientprotocol/sdk';
+import type { EditedFile } from '@shared/session';
 
 export interface ToolItem {
   kind: 'tool';
@@ -9,6 +10,8 @@ export interface ToolItem {
   toolKind: ToolKind | null;
   status: ToolCallStatus;
   content: ToolCallContent[];
+  // where the call worked; a harness may give each diff the line it starts on here
+  locations?: ToolCallLocation[];
   rawInput: unknown;
 }
 
@@ -18,6 +21,8 @@ export type TranscriptItem =
   | { kind: 'thought'; id: string; text: string; startedAt: number; endedAt: number | null }
   | ToolItem
   | { kind: 'plan'; id: string; entries: PlanEntry[] }
+  // the files a finished turn changed, each as one diff from before the turn to after it
+  | { kind: 'edits'; id: string; files: EditedFile[] }
   | { kind: 'error'; id: string; message: string; detail: string }
   | { kind: 'notice'; id: string; text: string };
 
@@ -67,6 +72,7 @@ export function applyUpdate(items: TranscriptItem[], update: SessionUpdate, now 
         toolKind: update.kind ?? null,
         status: update.status ?? 'pending',
         content: update.content ?? [],
+        locations: update.locations ?? [],
         rawInput: update.rawInput,
       };
       const at = closed.findIndex((i) => i.kind === 'tool' && i.id === update.toolCallId);
@@ -82,6 +88,7 @@ export function applyUpdate(items: TranscriptItem[], update: SessionUpdate, now 
           toolKind: update.kind ?? i.toolKind,
           status: update.status ?? i.status,
           content: update.content ?? i.content,
+          locations: update.locations ?? i.locations,
           rawInput: update.rawInput ?? i.rawInput,
         };
       });
@@ -109,71 +116,30 @@ export function endTurn(items: TranscriptItem[], now = Date.now()): TranscriptIt
   return closeThought(items, now);
 }
 
+// the card of the files a turn changed, at its end; a turn that changed none has no card
+export function addEdits(items: TranscriptItem[], files: EditedFile[]): TranscriptItem[] {
+  if (!files.length) return items;
+  return [...closeThought(items, Date.now()), { kind: 'edits', id: nextId('f'), files }];
+}
+
 // a quiet line in the transcript, such as a turn the user stopped
 export function addNotice(items: TranscriptItem[], text: string): TranscriptItem[] {
   return [...closeThought(items, Date.now()), { kind: 'notice', id: nextId('n'), text }];
 }
 
-export type FileDiff = Extract<ToolCallContent, { type: 'diff' }>;
+// consecutive tool calls between two pieces of text are shown as one group
+export type Block = { kind: 'item'; item: Exclude<TranscriptItem, ToolItem> } | { kind: 'tools'; id: string; tools: ToolItem[] };
 
-// one file a turn changed, with every diff its tool calls carried, in order. a harness sends the changed stretches
-// of a file rather than the whole file -- Claude Code sends each hunk with a little context -- so two edits to one
-// file stay two diffs and cannot be merged into one
-export interface EditedFile {
-  path: string;
-  diffs: FileDiff[];
-}
-
-// consecutive tool calls between two pieces of text are shown as one group, and a finished turn that changed files
-// ends in a card of those files
-export type Block =
-  | { kind: 'item'; item: Exclude<TranscriptItem, ToolItem> }
-  | { kind: 'tools'; id: string; tools: ToolItem[] }
-  | { kind: 'edits'; id: string; files: EditedFile[] };
-
-export function group(items: TranscriptItem[], running = false): Block[] {
+export function group(items: TranscriptItem[]): Block[] {
   const blocks: Block[] = [];
-  // where the turn being read starts in blocks, and the files its completed tool calls changed
-  let start = 0;
-  let edits = new Map<string, EditedFile>();
-  let editsId = '';
-
-  const closeTurn = () => {
-    if (edits.size === 0) return;
-    // the card sums up the turn's work, so a Stopped line or an error that ended the turn stays below it
-    let at = blocks.length;
-    while (at > start) {
-      const prev = blocks[at - 1];
-      if (prev.kind !== 'item' || (prev.item.kind !== 'notice' && prev.item.kind !== 'error')) break;
-      at--;
-    }
-    blocks.splice(at, 0, { kind: 'edits', id: editsId, files: [...edits.values()] });
-  };
-
   for (const item of items) {
-    if (item.kind === 'user') {
-      closeTurn();
-      edits = new Map();
-      start = blocks.length;
-    }
     if (item.kind === 'tool') {
       const last = blocks[blocks.length - 1];
       if (last?.kind === 'tools') last.tools.push(item);
       else blocks.push({ kind: 'tools', id: `g-${item.id}`, tools: [item] });
-      // a failed or rejected call changed nothing
-      if (item.status !== 'completed') continue;
-      for (const c of item.content) {
-        if (c.type !== 'diff') continue;
-        if (edits.size === 0) editsId = `f-${item.id}`;
-        const file = edits.get(c.path);
-        if (file) file.diffs.push(c);
-        else edits.set(c.path, { path: c.path, diffs: [c] });
-      }
     } else {
       blocks.push({ kind: 'item', item });
     }
   }
-  // the turn still running has no card yet
-  if (!running) closeTurn();
   return blocks;
 }

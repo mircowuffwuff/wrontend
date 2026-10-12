@@ -6,7 +6,7 @@ import type { Effort, RequestStats } from '@shared/proxy';
 import type { CreateSessionOptions, PermissionRequest, SessionEvent, SessionInfo } from '@shared/session';
 import { bridge } from '../bridge';
 import { back, forget, forward, NO_HISTORY, visit, type History } from './history';
-import { addError, addNotice, addUser, applyUpdate, endTurn, type TranscriptItem } from './transcript';
+import { addEdits, addError, addNotice, addUser, applyUpdate, endTurn, type TranscriptItem } from './transcript';
 
 export interface SessionView {
   info: SessionInfo;
@@ -185,19 +185,23 @@ function onEvent(event: SessionEvent): void {
         return patch(state, id, (v) => ({ running: true, turnStartedAt: v.turnStartedAt ?? Date.now() }));
       case 'turn-end':
         save = true;
-        return patch(state, id, (v) => ({
-          running: false,
-          turnStartedAt: null,
-          permissions: [],
-          items:
-            event.stopReason === 'error'
-              ? addError(endTurn(v.items), 'The turn ended with an error.', event.error ?? '')
-              : event.stopReason === 'cancelled'
-                ? addNotice(v.items, 'Stopped')
-                : event.stopReason === 'max_tokens'
-                  ? addNotice(v.items, 'The reply hit the output token limit')
-                  : endTurn(v.items),
-        }));
+        return patch(state, id, (v) => {
+          // the card of changed files sums up the turn, so a Stopped line or an error goes below it
+          const ended = addEdits(endTurn(v.items), event.edits);
+          return {
+            running: false,
+            turnStartedAt: null,
+            permissions: [],
+            items:
+              event.stopReason === 'error'
+                ? addError(ended, 'The turn ended with an error.', event.error ?? '')
+                : event.stopReason === 'cancelled'
+                  ? addNotice(ended, 'Stopped')
+                  : event.stopReason === 'max_tokens'
+                    ? addNotice(ended, 'The reply hit the output token limit')
+                    : ended,
+          };
+        });
       case 'permission':
         return patch(state, id, (v) => ({ permissions: [...v.permissions, event.request] }));
       case 'permission-closed':

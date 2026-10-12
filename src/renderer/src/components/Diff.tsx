@@ -1,32 +1,16 @@
-// a unified diff of one file, and the line counts the summaries show
+// a unified diff, drawn from hunks with their real line numbers, and the line counts the summaries show
 
-import { diffLines } from 'diff';
-import type { ToolCallContent } from '@agentclientprotocol/sdk';
+import type { ToolCallContent, ToolCallLocation } from '@agentclientprotocol/sdk';
+import { countHunks, hunksOf, placeDiffs, type PlacedDiff } from '@shared/diffs';
+import type { DiffHunk } from '@shared/session';
 
 export interface LineCounts {
   added: number;
   removed: number;
 }
 
-export function countLines(oldText: string | null | undefined, newText: string): LineCounts {
-  let added = 0;
-  let removed = 0;
-  for (const part of diffLines(oldText ?? '', newText)) {
-    if (part.added) added += part.count ?? 0;
-    else if (part.removed) removed += part.count ?? 0;
-  }
-  return { added, removed };
-}
-
 export function countContent(content: ToolCallContent[]): LineCounts {
-  const total = { added: 0, removed: 0 };
-  for (const c of content) {
-    if (c.type !== 'diff') continue;
-    const n = countLines(c.oldText, c.newText);
-    total.added += n.added;
-    total.removed += n.removed;
-  }
-  return total;
+  return countHunks(placeDiffs(content).flatMap((d) => hunksOf(d.oldText, d.newText)));
 }
 
 export function Counts({ counts }: { counts: LineCounts }) {
@@ -39,48 +23,46 @@ export function Counts({ counts }: { counts: LineCounts }) {
   );
 }
 
-const CONTEXT = 3;
+type Row = { type: 'add' | 'remove' | 'same'; text: string; no: number } | { type: 'fold'; text: string };
 
-// the path heads the diff unless the caller shows it already
-export function DiffView({ path, oldText, newText }: { path?: string; oldText?: string | null; newText: string }) {
-  const parts = diffLines(oldText ?? '', newText);
-  const rows: { type: 'add' | 'remove' | 'same' | 'fold'; text: string; oldNo?: number; newNo?: number }[] = [];
-  let oldNo = 1;
-  let newNo = 1;
-  parts.forEach((part, index) => {
-    const lines = part.value.replace(/\n$/, '').split('\n');
-    if (part.added) {
-      for (const text of lines) rows.push({ type: 'add', text, newNo: newNo++ });
-    } else if (part.removed) {
-      for (const text of lines) rows.push({ type: 'remove', text, oldNo: oldNo++ });
-    } else {
-      // unchanged stretches keep a little context on each side of a change and fold the rest
-      const keepHead = index === 0 ? 0 : CONTEXT;
-      const keepTail = index === parts.length - 1 ? 0 : CONTEXT;
-      if (lines.length > keepHead + keepTail + 1) {
-        for (const text of lines.slice(0, keepHead)) rows.push({ type: 'same', text, oldNo: oldNo++, newNo: newNo++ });
-        const hidden = lines.length - keepHead - keepTail;
-        rows.push({ type: 'fold', text: `${hidden} unmodified lines` });
-        oldNo += hidden;
-        newNo += hidden;
-        for (const text of lines.slice(lines.length - keepTail)) rows.push({ type: 'same', text, oldNo: oldNo++, newNo: newNo++ });
-      } else {
-        for (const text of lines) rows.push({ type: 'same', text, oldNo: oldNo++, newNo: newNo++ });
+// the lines a hunk does not show fold into one row: those above the first hunk, and those between two
+function rowsOf(hunks: DiffHunk[]): Row[] {
+  const rows: Row[] = [];
+  let shownTo = 0;
+  for (const h of hunks) {
+    const first = Math.max(h.newStart, 1);
+    const hidden = first - 1 - shownTo;
+    if (hidden > 0) rows.push({ type: 'fold', text: `${hidden} unmodified line${hidden === 1 ? '' : 's'}` });
+    let oldNo = Math.max(h.oldStart, 1);
+    let newNo = first;
+    for (const line of h.lines) {
+      const text = line.slice(1);
+      if (line.startsWith('+')) rows.push({ type: 'add', text, no: newNo++ });
+      else if (line.startsWith('-')) rows.push({ type: 'remove', text, no: oldNo++ });
+      else {
+        rows.push({ type: 'same', text, no: newNo++ });
+        oldNo++;
       }
     }
-  });
+    shownTo = newNo - 1;
+  }
+  return rows;
+}
+
+// the path heads the diff unless the caller shows it already
+export function HunksView({ path, hunks }: { path?: string; hunks: DiffHunk[] }) {
   return (
     <div className="diff">
       {path && <div className="diff-path mono">{path}</div>}
       <div className="diff-body mono">
-        {rows.map((r, i) =>
+        {rowsOf(hunks).map((r, i) =>
           r.type === 'fold' ? (
             <div key={i} className="diff-fold">
               {r.text}
             </div>
           ) : (
             <div key={i} className={`diff-line ${r.type}`}>
-              <span className="no">{r.type === 'add' ? r.newNo : r.oldNo}</span>
+              <span className="no">{r.no}</span>
               <span className="sign">{r.type === 'add' ? '+' : r.type === 'remove' ? '-' : ' '}</span>
               <span className="text">{r.text || ' '}</span>
             </div>
@@ -88,5 +70,16 @@ export function DiffView({ path, oldText, newText }: { path?: string; oldText?: 
         )}
       </div>
     </div>
+  );
+}
+
+// the diffs one tool call carried, each placed where the harness said it is
+export function CallDiffs({ content, locations }: { content: ToolCallContent[]; locations?: ToolCallLocation[] }) {
+  return (
+    <>
+      {placeDiffs(content, locations).map((d: PlacedDiff, i) => (
+        <HunksView key={i} path={d.path} hunks={hunksOf(d.oldText, d.newText, d.oldLine, d.newLine)} />
+      ))}
+    </>
   );
 }

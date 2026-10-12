@@ -27,6 +27,22 @@ export interface StoredSession {
   items: unknown[];
 }
 
+// a stretch of a unified diff: where it starts in the old and the new file, and its lines, each led by '+', '-' or ' '
+export interface DiffHunk {
+  oldStart: number;
+  newStart: number;
+  lines: string[];
+}
+
+// a file a turn changed, as its diff from before the turn to after it
+export interface EditedFile {
+  // the path as the harness named it
+  path: string;
+  hunks: DiffHunk[];
+  // false when the file's state before the turn could not be worked out: the hunks are then each edit's own, in order
+  whole: boolean;
+}
+
 export interface SessionModes {
   current: string;
   available: SessionMode[];
@@ -57,7 +73,8 @@ export type SessionEvent =
   | { sessionId: string; type: 'permission'; request: PermissionRequest }
   | { sessionId: string; type: 'permission-closed'; requestId: string }
   | { sessionId: string; type: 'turn-start' }
-  | { sessionId: string; type: 'turn-end'; stopReason: StopReason | 'error'; error?: string }
+  // edits lists the files the turn's completed tool calls changed
+  | { sessionId: string; type: 'turn-end'; stopReason: StopReason | 'error'; error?: string; edits: EditedFile[] }
   | { sessionId: string; type: 'stats'; stats: RequestStats }
   | { sessionId: string; type: 'exit'; code: number | null; detail: string }
   | { sessionId: string; type: 'notice'; text: string }

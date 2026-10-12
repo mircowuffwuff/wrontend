@@ -60,7 +60,7 @@ export function Transcript({ session }: { session: SessionView }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const now = useNow(session.running);
-  const blocks = group(session.items, session.running);
+  const blocks = group(session.items);
   const lastBlock = blocks[blocks.length - 1];
 
   // a message the user just sent always brings the view to the bottom, and so does opening a session
@@ -87,7 +87,6 @@ export function Transcript({ session }: { session: SessionView }) {
       <div className="column transcript">
         {blocks.map((block) => {
           if (block.kind === 'tools') return <ToolGroup key={block.id} tools={block.tools} live={session.running && block === lastBlock} />;
-          if (block.kind === 'edits') return <EditedFiles key={block.id} files={block.files} />;
           const item = block.item;
           switch (item.kind) {
             case 'user':
@@ -111,6 +110,8 @@ export function Transcript({ session }: { session: SessionView }) {
                   ))}
                 </ul>
               );
+            case 'edits':
+              return <EditedFiles key={item.id} files={item.files} />;
             case 'error':
               return <ErrorBlock key={item.id} item={item} />;
             case 'notice':

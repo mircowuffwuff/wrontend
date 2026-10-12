@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { ToolCallContent, ToolKind } from '@agentclientprotocol/sdk';
 import type { ToolItem } from '../state/transcript';
-import { Counts, countContent, DiffView } from './Diff';
+import { CallDiffs, Counts, countContent } from './Diff';
 import { Icon } from './Icon';
 import { InputView } from './InputView';
 import { Leaf } from './Leaf';
@@ -46,7 +46,7 @@ function textOf(content: ToolCallContent[]): string {
 
 function ToolCard({ tool }: { tool: ToolItem }) {
   const [open, setOpen] = useState(false);
-  const diffs = tool.content.filter((c) => c.type === 'diff');
+  const hasDiffs = tool.content.some((c) => c.type === 'diff');
   const output = textOf(tool.content);
   const failed = tool.status === 'failed';
   return (
@@ -60,8 +60,8 @@ function ToolCard({ tool }: { tool: ToolItem }) {
       </button>
       {open && (
         <div className="tool-body">
-          {diffs.map((d, i) => d.type === 'diff' && <DiffView key={i} path={d.path} oldText={d.oldText} newText={d.newText} />)}
-          {tool.rawInput !== undefined && diffs.length === 0 && (
+          <CallDiffs content={tool.content} locations={tool.locations} />
+          {tool.rawInput !== undefined && !hasDiffs && (
             <details>
               <summary>Input</summary>
               <InputView input={tool.rawInput} />

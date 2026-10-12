@@ -99,7 +99,8 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await js(`document.querySelector('.diff')?.scrollIntoView({ block: 'center' })`);
     await shot('04-tools-expanded');
   });
-  // the card that ends a turn which changed files: the first turn's one file, then five, with a failed edit left out
+  // the card that ends a turn which changed files: the first turn's one file, then five, with a failed edit left out and
+  // the file edited three times shown as one diff with its real line numbers
   await step('04-edited-files', async () => {
     const card = `[...document.querySelectorAll('.edited-files')].pop()`;
     const names = `[...${card}.querySelectorAll('.edited-file .name')].map((n) => n.textContent).join(',')`;
@@ -107,14 +108,20 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await type('edit several files');
     await waitFor(`document.querySelectorAll('.edited-files').length === 2 && !document.querySelector('.send.stop')`);
     const head = await js<string>(`${card}.querySelector('.edited-head').textContent`);
-    if (head !== 'Edited 5 files+9-5') throw new Error(`the card's header reads ${head}`);
+    if (head !== 'Edited 5 files+10-5') throw new Error(`the card's header reads ${head}`);
     if ((await js<string>(names)) !== 'app.ts,view.ts,usage.md') throw new Error(`the card's first rows are ${await js<string>(names)}`);
     await shot('04-edited-files');
     await js(`${card}.querySelector('.edited-row.more').click()`);
     await waitFor(`${card}.querySelectorAll('.edited-file').length === 5 && ${card}.querySelector('.edited-row.more').textContent === 'Show less'`);
     if ((await js<string>(names)).includes('package-lock')) throw new Error('the failed edit is on the card');
     await js(`${card}.querySelector('.edited-file .edited-row').click()`);
-    await waitFor(`${card}.querySelectorAll('.edited-diffs .diff').length === 2`);
+    await waitFor(`${card}.querySelector('.edited-diffs .diff')`);
+    const diff = await js<{ diffs: number; folds: string[]; first: string }>(`({
+      diffs: ${card}.querySelectorAll('.edited-diffs .diff').length,
+      folds: [...${card}.querySelectorAll('.edited-diffs .diff-fold')].map((f) => f.textContent),
+      first: ${card}.querySelector('.edited-diffs .diff-line.remove .no').textContent,
+    })`);
+    if (diff.diffs !== 1 || diff.folds.join() !== '5 unmodified lines' || diff.first !== '4') throw new Error(`app.ts opens as ${JSON.stringify(diff)}`);
     await js(`document.querySelector('.content').scrollTop = document.querySelector('.content').scrollHeight`);
     await shot('04-edited-files-open');
     await js(`${card}.querySelector('.edited-row.more').click()`);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUpdate } from '@agentclientprotocol/sdk';
-import { addError, addNotice, addUser, applyUpdate, group, type TranscriptItem } from './transcript';
+import { addEdits, addUser, applyUpdate, group, type TranscriptItem } from './transcript';
 
 const text = (t: string) => ({ type: 'text' as const, text: t });
 
@@ -24,7 +24,7 @@ describe('applyUpdate', () => {
     expect(items[1]).toMatchObject({ text: 'let me think', startedAt: 1000, endedAt: 1002 });
     expect(items[2]).toMatchObject({ text: 'Sure, reading it.' });
     expect(items[3]).toMatchObject({ id: 'a', status: 'completed' });
-    expect(group(items).map((b) => (b.kind === 'tools' ? `tools:${b.tools.length}` : b.kind === 'item' ? b.item.kind : b.kind))).toEqual([
+    expect(group(items).map((b) => (b.kind === 'tools' ? `tools:${b.tools.length}` : b.item.kind))).toEqual([
       'user',
       'thought',
       'assistant',
@@ -45,52 +45,22 @@ describe('applyUpdate', () => {
   });
 });
 
-describe('group', () => {
-  const diff = (path: string, newText: string) => ({ type: 'diff' as const, path, oldText: 'old', newText });
-  const edit = (id: string, status: 'completed' | 'failed', ...content: ReturnType<typeof diff>[]): SessionUpdate => ({
-    sessionUpdate: 'tool_call',
-    toolCallId: id,
-    title: `Edit ${id}`,
-    kind: 'edit',
-    status,
-    content,
-  });
-  const shape = (items: TranscriptItem[], running = false) => group(items, running).map((b) => (b.kind === 'item' ? b.item.kind : b.kind));
+describe('addEdits', () => {
+  const file = { path: 'a.ts', hunks: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }], whole: true };
 
-  it('ends a finished turn in a card of the files its completed calls changed, each with its diffs in order', () => {
+  it('ends the turn in a card of its files, and adds none for a turn that changed nothing', () => {
+    const items = run([{ sessionUpdate: 'agent_message_chunk', content: text('Done.') }]);
+    expect(addEdits(items, [])).toBe(items);
+    const ended = addEdits(items, [file]);
+    expect(ended.map((i) => i.kind)).toEqual(['user', 'assistant', 'edits']);
+    expect(group(ended).map((b) => (b.kind === 'tools' ? 'tools' : b.item.kind))).toEqual(['user', 'assistant', 'edits']);
+  });
+
+  it('keeps the locations a tool call reports', () => {
     const items = run([
-      edit('a', 'completed', diff('a.ts', 'one')),
-      edit('b', 'failed', diff('b.ts', 'never')),
-      edit('c', 'completed', diff('c.ts', 'two'), diff('a.ts', 'three')),
-      { sessionUpdate: 'agent_message_chunk', content: text('Done.') },
+      { sessionUpdate: 'tool_call', toolCallId: 'a', title: 'Edit a.ts', kind: 'edit', status: 'pending', locations: [{ path: 'a.ts' }] },
+      { sessionUpdate: 'tool_call_update', toolCallId: 'a', status: 'completed', locations: [{ path: 'a.ts', line: 12 }] },
     ]);
-    const blocks = group(items);
-    expect(shape(items)).toEqual(['user', 'tools', 'assistant', 'edits']);
-    const card = blocks[3];
-    expect(card).toMatchObject({ kind: 'edits', id: 'f-a' });
-    if (card.kind !== 'edits') return;
-    expect(card.files.map((f) => [f.path, f.diffs.map((d) => d.newText)])).toEqual([
-      ['a.ts', ['one', 'three']],
-      ['c.ts', ['two']],
-    ]);
-  });
-
-  it('gives the running turn no card, and a turn that changed nothing none', () => {
-    const items = run([edit('a', 'completed', diff('a.ts', 'one'))]);
-    expect(shape(items, true)).toEqual(['user', 'tools']);
-    const next = addUser(items, 'and now?');
-    expect(shape(next, true)).toEqual(['user', 'tools', 'edits', 'user']);
-    expect(shape(applyUpdate(next, { sessionUpdate: 'agent_message_chunk', content: text('Nothing to change.') }))).toEqual([
-      'user',
-      'tools',
-      'edits',
-      'user',
-      'assistant',
-    ]);
-  });
-
-  it('keeps a Stopped line or an error below the card', () => {
-    const items = addError(addNotice(run([edit('a', 'completed', diff('a.ts', 'one'))]), 'Stopped'), 'The turn ended with an error.');
-    expect(shape(items)).toEqual(['user', 'tools', 'edits', 'notice', 'error']);
+    expect(items[1]).toMatchObject({ locations: [{ path: 'a.ts', line: 12 }] });
   });
 });

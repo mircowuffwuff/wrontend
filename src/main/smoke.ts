@@ -332,6 +332,71 @@ export async function runSmoke(win: BrowserWindow, out: string): Promise<void> {
     await js(`document.querySelector('.setup-failed button[aria-label="Dismiss"]').click()`);
     await waitFor(`!document.querySelector('.setup-failed')`);
   });
+  // the browser reads a Hugging Face in memory, measures a fixed 16 GB card, and its downloads stop halfway and fail
+  await step('16-model-browser', async () => {
+    const button = (text: string) => `[...document.querySelectorAll('.browser button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)})`;
+    const search = (text: string) =>
+      js(`(() => {
+        const box = document.querySelector('.browser .search input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+
+    await js(`document.querySelector('.model-trigger').closest('button').click()`);
+    await waitFor(`document.querySelector('.menu .menu-footer')`);
+    await js(`document.querySelector('.menu .menu-footer').click()`);
+    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 3`);
+    await shot('16-browser-start');
+    await search('gemma');
+    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 1`);
+    await search('');
+    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 3`);
+
+    await js(`[...document.querySelectorAll('.browser .repo-row')].find((b) => b.textContent.includes('Qwen3.8-27B-GGUF')).click()`);
+    await waitFor(`document.querySelector('.quant-row.picked')?.textContent.includes('UD-IQ3_SRecommended')`);
+    const rows = await js<string[]>(`[...document.querySelectorAll('.quant-row')].map((r) => r.querySelector('.quant-tag').textContent + ' ' + (r.querySelector('.fit')?.textContent ?? ''))`);
+    if (rows[0] !== 'UD-IQ2_XXS Fits on GPU' || rows.at(-1) !== 'BF16 Too large' || rows.length !== 9) throw new Error(`the quants read ${JSON.stringify(rows)}`);
+    await shot('16-browser-repo');
+
+    await js(`${button('Download')}.click()`);
+    await waitFor(`document.querySelector('.pull-bar .progress') && /Downloading UD-IQ3_S · [1-9]/.test(document.querySelector('.pull-bar').textContent)`);
+    await shot('16-browser-downloading');
+    await js(`${button('Cancel')}.click()`);
+    await waitFor(`!document.querySelector('.pull-bar .progress') && ${button('Download')}`);
+
+    // a download is something a restart of Ollama cuts off, so the restart asks first
+    await js(`${button('Download')}.click()`);
+    await waitFor(`document.querySelector('.pull-bar .progress')`);
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await waitFor(`!document.querySelector('.browser')`);
+    await js(`document.querySelector('.status button[aria-label="Settings"]').click()`);
+    await waitFor(`document.querySelector('.settings-nav')`);
+    await js(`[...document.querySelectorAll('.settings-nav .nav-item')].find((b) => b.textContent === 'Ollama').click()`);
+    await waitFor(`document.querySelector('.ollama-panel button')`);
+    if ((await js<string>(`document.querySelector('.ollama-panel button').textContent`)).includes('Restart Ollama')) {
+      await js(`document.querySelector('.ollama-panel button').click()`);
+      await waitFor(`[...document.querySelectorAll('.confirm-items li')].some((li) => li.textContent === 'Downloading hf.co/smoke-test/Qwen3.8-27B-GGUF:UD-IQ3_S')`);
+      await shot('16-restart-confirm-download');
+      await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Cancel').click()`);
+      await waitFor(`!document.querySelector('.confirm')`);
+    } else {
+      skipped.push('16-model-browser: Ollama is not running, so a restart interrupts no download and the dialog is not shown');
+    }
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await waitFor(`!document.querySelector('.settings')`);
+
+    // the download outlives the browser: opened again, it is still under way, then fails
+    await js(`document.querySelector('.model-trigger').closest('button').click()`);
+    await waitFor(`document.querySelector('.menu .menu-footer')`);
+    await js(`document.querySelector('.menu .menu-footer').click()`);
+    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 3`);
+    await js(`[...document.querySelectorAll('.browser .repo-row')].find((b) => b.textContent.includes('Qwen3.8-27B-GGUF')).click()`);
+    await waitFor(`document.querySelector('.pull-bar.failed')?.textContent.includes('could not download')`, 10_000);
+    await js(`document.querySelector('.pull-bar.failed .tool-summary').click()`);
+    await shot('16-browser-failed');
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    await waitFor(`!document.querySelector('.browser')`);
+  });
 
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));

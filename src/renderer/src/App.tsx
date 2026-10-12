@@ -5,9 +5,11 @@ import { ConfirmDialog } from './components/Confirm';
 import { Icon } from './components/Icon';
 import { Leaf } from './components/Leaf';
 import { Menu } from './components/Menu';
+import { ModelBrowser } from './components/ModelBrowser';
 import { SettingsDialog } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
+import { startPullSync, useBrowser } from './state/browser';
 import { useDraft } from './state/draft';
 import { startHarnessSync, useHarnesses } from './state/harnesses';
 import { startOllamaSync } from './state/ollama';
@@ -19,6 +21,7 @@ export function App() {
   useEffect(() => startOllamaSync(), []);
   useEffect(() => startHarnessSync(), []);
   useEffect(() => startSessionSync(), []);
+  useEffect(() => startPullSync(), []);
   useEffect(() => {
     void bridge.invoke('app:autoprompt').then((auto) => {
       if (!auto) return;
@@ -29,6 +32,7 @@ export function App() {
   const session = useSessions((s) => (s.activeId ? s.sessions[s.activeId] : null));
   const harnessName = useHarnesses((s) => s.list.find((h) => h.id === session?.info.harness)?.name ?? session?.info.harness);
   const settingsOpen = useSettings((s) => s.section !== null);
+  const browserOpen = useBrowser((s) => s.open);
 
   return (
     <div className="app">
@@ -74,6 +78,7 @@ export function App() {
         <Composer session={session} />
       </main>
       {settingsOpen && <SettingsDialog />}
+      {browserOpen && <ModelBrowser />}
       <ConfirmDialog />
     </div>
   );

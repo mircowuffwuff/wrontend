@@ -1,20 +1,24 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
-import type { HarnessEntry } from '@shared/components';
+import type { ComponentState, HarnessEntry } from '@shared/components';
 import type { Settings } from '@shared/settings';
 import { CATALOG } from './components/catalog';
 import { deleteModel, DerivedModels, routeModel } from './components/derived';
 import { ComponentEngine } from './components/engine';
 import { fakeNpm } from './components/fake-npm';
 import { NpmDriver } from './components/npm-driver';
+import { ModelPulls, pulledName, pullId } from './components/pull';
 import { RENDERERS } from './components/renderers';
 import { ComponentStore } from './components/store';
 import { AgentHost } from './host/agent-host';
 import { PROFILES } from './host/profiles';
 import { handle, send } from './ipc';
+import { fakeHardware, fakePulling, fakeSource } from './models/fake-source';
+import { HuggingFace, repoDetails, type ModelSource } from './models/huggingface';
 import { OllamaClient, resolveBaseUrl } from './ollama/client';
 import { memoryEnvironment, windowsEnvironment } from './ollama/environment';
+import { isLocalAddress, readHardware } from './ollama/hardware';
 import { OllamaMonitor } from './ollama/monitor';
 import { OllamaServer, windowsProcesses, type ProcessControl } from './ollama/server-settings';
 import { ProxyServer } from './proxy/server';
@@ -66,8 +70,23 @@ const npm = new NpmDriver(
   smoke ? { findNpm: async () => fakeNpm(join(app.getPath('userData'), 'fake-npm'), { latest: '0.89.1', chunks: 12, fail: smokeInstalls++ === 0 }) } : {},
 );
 const derived = new DerivedModels(ollama, componentStore, RENDERERS, { enabled: () => settings.value.models.derive, readOnly: !!smoke });
-const components = new ComponentEngine([npm, derived], (id) => {
+// the model browser reads Hugging Face and pulls into Ollama; the smoke test does neither, and measures a fixed machine
+const modelSource: ModelSource = smoke ? fakeSource : new HuggingFace();
+const pulls = new ModelPulls(smoke ? fakePulling : ollama, (name) => derived.has(name));
+// the downloads under way and the ones that failed, for a window that opens or reloads meanwhile
+const pullStates = new Map<string, ComponentState>();
+const components = new ComponentEngine([npm, derived, pulls], (id, state) => {
   if (derived.owns(id)) send(win, 'ollama:models-changed', undefined);
+  if (pulls.owns(id)) {
+    const name = pulledName(id);
+    if (state.status === 'installing' || state.status === 'failed') pullStates.set(name, state);
+    else pullStates.delete(name);
+    send(win, 'models:pull-changed', { name, state });
+    if (state.status !== 'installing') {
+      derived.invalidate();
+      send(win, 'ollama:models-changed', undefined);
+    }
+  }
   for (const harness of harnesses()) if (PROFILES[harness.id]?.component === id) send(win, 'harness:changed', harness);
 });
 
@@ -230,6 +249,23 @@ function registerHandlers(): void {
       void monitor.poll();
     }
   });
+  handle('models:search', (query) => modelSource.search(query));
+  handle('models:repo', async (repo) => {
+    const files = await modelSource.files(repo);
+    const hardware = smoke
+      ? fakeHardware
+      : await readHardware({
+          local: isLocalAddress(ollama.baseUrl),
+          contextSetting: (await ollamaServer.state().catch(() => null))?.values.OLLAMA_CONTEXT_LENGTH ?? null,
+        });
+    return repoDetails(repo, files, hardware);
+  });
+  // answers at once: the download reports itself as models:pull-changed, and a failure stays in its state
+  handle('models:pull', (name) => {
+    void components.install(pullId(name)).catch(() => {});
+  });
+  handle('models:cancel-pull', (name) => components.cancel(pullId(name)));
+  handle('models:pulls', () => [...pullStates].map(([name, state]) => ({ name, state })));
   handle('ollama:default-address', () => resolveBaseUrl(process.env.OLLAMA_HOST));
   handle('ollama:server', () => ollamaServer.state());
   handle('ollama:set-server', (changes) => ollamaServer.set(changes));

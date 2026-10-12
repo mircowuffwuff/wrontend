@@ -1324,3 +1324,207 @@ a.button {
   background: var(--remove);
   color: var(--bg);
 }
+
+/* the model browser: the Settings dialog's frame, search results on the left, a repo's quants on the right */
+
+.browser {
+  grid-template-columns: 340px minmax(0, 1fr);
+}
+.browser-results {
+  gap: 0;
+}
+.browser-note {
+  margin: 4px 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.browser-page .browser-note {
+  margin: 0;
+}
+.browser-note.error {
+  color: var(--remove);
+}
+.repo-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 8px;
+  padding: 7px 12px;
+  border-radius: var(--leaf-md);
+  text-align: left;
+}
+.repo-row:hover {
+  background: var(--hover);
+}
+.repo-row.active {
+  background: var(--selected);
+}
+.repo-name {
+  overflow-wrap: anywhere;
+}
+.repo-name .muted {
+  color: var(--muted);
+}
+.repo-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.browser-page {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+.browser-intro {
+  margin: auto;
+  max-width: 380px;
+  text-align: center;
+}
+.browser-intro h2 {
+  margin: 10px 0 6px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.repo-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.repo-head {
+  padding-right: 40px;
+}
+.repo-head h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.quant-list {
+  display: flex;
+  flex-direction: column;
+  margin: 18px 0 16px;
+}
+.quant-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--leaf-sm);
+  text-align: left;
+}
+.quant-row + .quant-row {
+  box-shadow: 0 -1px 0 var(--line);
+}
+.quant-row:hover {
+  background: var(--hover);
+}
+.quant-row.picked {
+  background: var(--selected);
+  box-shadow: none;
+}
+.quant-row.picked + .quant-row {
+  box-shadow: none;
+}
+.quant-row .spacer {
+  flex: 1;
+}
+.quant-size {
+  width: 64px;
+  text-align: right;
+  font-size: 13px;
+}
+.quant-progress {
+  font-size: 12px;
+  color: var(--accent);
+}
+.badge {
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.badge.accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.fit {
+  font-size: 12px;
+}
+/* a quant that fits is the ordinary case: only its dot is coloured */
+.fit.good {
+  color: var(--muted);
+}
+.fit.good::before {
+  background: var(--olive) !important;
+}
+.fit.warn {
+  color: var(--mustard);
+}
+.fit.bad {
+  color: var(--remove);
+}
+.fit.good::before,
+.fit.warn::before,
+.fit.bad::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+}
+
+/* the picked quant's download, kept in view at the page's foot */
+.pull-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: auto -48px 0 -40px;
+  padding: 14px 48px 18px 40px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.pull-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.pull-bar .button {
+  flex-shrink: 0;
+}
+.pull-bar.failed .tool-summary {
+  min-width: 0;
+}
+.progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.progress > div {
+  height: 100%;
+  background: var(--accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .progress > div {
+    transition: width 240ms linear;
+  }
+}
+.menu-footer {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--leaf-sm) var(--leaf-sm);
+}
+.menu-footer .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

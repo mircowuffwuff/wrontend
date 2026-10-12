@@ -1,6 +1,7 @@
 // the contract between main and the renderer -- every channel, its arguments and its result
 
 import type { HarnessEntry } from './components';
+import type { PullEntry, RepoDetails, RepoSummary } from './models';
 import type { ModelDetails, ModelEntry, OllamaStatus } from './ollama';
 import type { Effort } from './proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, StoredSession } from './session';
@@ -28,6 +29,15 @@ export interface InvokeMap {
   'ollama:server': { args: []; result: OllamaServerState };
   'ollama:set-server': { args: [changes: Partial<OllamaServerValues>]; result: OllamaServerState };
   'ollama:restart': { args: []; result: void };
+  // the model browser: GGUF repos on Hugging Face, the most downloaded first
+  'models:search': { args: [query: string]; result: RepoSummary[] };
+  // a repo's quants, each with its size and whether it fits on this machine
+  'models:repo': { args: [repo: string]; result: RepoDetails };
+  // downloads a model into Ollama; its progress arrives as models:pull-changed
+  'models:pull': { args: [name: string]; result: void };
+  'models:cancel-pull': { args: [name: string]; result: void };
+  // the downloads under way, and the ones that failed
+  'models:pulls': { args: []; result: PullEntry[] };
   // the harnesses to pick from, each with whether it is set up
   'harness:list': { args: []; result: HarnessEntry[] };
   // sets a harness up; its progress arrives as harness:changed
@@ -52,6 +62,7 @@ export interface EventMap {
   'harness:changed': HarnessEntry;
   // something about a model's copy changed: the model list is read again
   'ollama:models-changed': void;
+  'models:pull-changed': PullEntry;
 }
 
 export type InvokeChannel = keyof InvokeMap;

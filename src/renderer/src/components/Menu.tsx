@@ -31,6 +31,7 @@ export function Menu({
   empty,
   triggerClass = 'picker',
   title,
+  footer,
 }: {
   trigger: ReactNode;
   items: MenuItem[];
@@ -40,6 +41,8 @@ export function Menu({
   empty?: ReactNode;
   triggerClass?: string;
   title?: string;
+  // an entry under the items that leads somewhere else, such as the model browser
+  footer?: { icon: IconName; label: string; run: () => void };
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -83,6 +86,20 @@ export function Menu({
               {item.action && <RowAction action={item.action} close={() => setOpen(false)} />}
             </div>
           ))}
+          {footer && (
+            <button
+              className="menu-item menu-footer"
+              onClick={() => {
+                setOpen(false);
+                footer.run();
+              }}
+            >
+              <span className="label">
+                <Icon name={footer.icon} size={15} />
+                {footer.label}
+              </span>
+            </button>
+          )}
         </div>
       )}
     </div>

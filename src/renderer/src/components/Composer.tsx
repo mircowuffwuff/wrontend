@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { bridge } from '../bridge';
 import type { ComponentState, HarnessEntry } from '@shared/components';
 import type { ModelEntry, ModelReasoning } from '@shared/ollama';
+import { useBrowser } from '../state/browser';
 import { confirm } from '../state/confirm';
 import { useDraft } from '../state/draft';
 import { isReady, useHarnesses } from '../state/harnesses';
@@ -325,6 +326,7 @@ ${c.reply}` : c.quote}>
             }
             title={pickedNote ?? undefined}
             empty="Ollama has no models, or is not running."
+            footer={{ icon: 'globe', label: 'Browse Models', run: () => useBrowser.getState().show() }}
             items={models.map((m) => ({
               key: m.name,
               label: <span className="mono">{m.name}</span>,

@@ -28,13 +28,30 @@ function phrase(kind: string, n: number, first: boolean): string {
   return first ? text : text.charAt(0).toLowerCase() + text.slice(1);
 }
 
+// kinds counted by the files they touched rather than by their calls: two edits to one file are one edited file
+const PER_FILE = new Set(['read', 'edit', 'delete']);
+
+// a call names its files by its diffs and its locations; one that names none counts as a file of its own
+function filesOf(t: ToolItem): string[] {
+  const paths = new Set([...t.content.flatMap((c) => (c.type === 'diff' ? [c.path] : [])), ...(t.locations ?? []).map((l) => l.path)]);
+  return paths.size ? [...paths] : [t.id];
+}
+
+// a failed call did nothing, so it counts only in a group where every call failed
+export function succeeded(tools: ToolItem[]): ToolItem[] {
+  const done = tools.filter((t) => t.status !== 'failed');
+  return done.length ? done : tools;
+}
+
 export function summarise(tools: ToolItem[]): string {
-  const counts = new Map<string, number>();
-  for (const t of tools) {
+  const counts = new Map<string, Set<string>>();
+  for (const t of succeeded(tools)) {
     const k = t.toolKind && VERBS[t.toolKind] ? t.toolKind : 'other';
-    counts.set(k, (counts.get(k) ?? 0) + 1);
+    const seen = counts.get(k) ?? new Set<string>();
+    for (const key of PER_FILE.has(k) ? filesOf(t) : [t.id]) seen.add(key);
+    counts.set(k, seen);
   }
-  return [...counts].map(([k, n], i) => phrase(k, n, i === 0)).join(', ');
+  return [...counts].map(([k, seen], i) => phrase(k, seen.size, i === 0)).join(', ');
 }
 
 function textOf(content: ToolCallContent[]): string {
@@ -86,7 +103,7 @@ function ToolIcon({ kind }: { kind: ToolKind | null }) {
 export function ToolGroup({ tools, live }: { tools: ToolItem[]; live: boolean }) {
   const [open, setOpen] = useState(false);
   const running = tools.find((t) => t.status === 'pending' || t.status === 'in_progress');
-  const counts = countContent(tools.flatMap((t) => t.content));
+  const counts = countContent(succeeded(tools).flatMap((t) => t.content));
   return (
     <div className="tool-group">
       <button className="tool-summary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>

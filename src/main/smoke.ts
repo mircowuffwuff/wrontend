@@ -109,6 +109,8 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await waitFor(`document.querySelectorAll('.edited-files').length === 2 && !document.querySelector('.send.stop')`);
     const head = await js<string>(`${card}.querySelector('.edited-head').textContent`);
     if (head !== 'Edited 5 files+10-5') throw new Error(`the card's header reads ${head}`);
+    const summary = await js<string>(`[...document.querySelectorAll('.tool-group > .tool-summary')].pop().textContent`);
+    if (summary !== 'Edited 5 files+10-5') throw new Error(`the tool group's summary reads ${summary}`);
     if ((await js<string>(names)) !== 'app.ts,view.ts,usage.md') throw new Error(`the card's first rows are ${await js<string>(names)}`);
     await shot('04-edited-files');
     await js(`${card}.querySelector('.edited-row.more').click()`);

@@ -4,10 +4,11 @@
 import { join } from 'node:path';
 import { CATALOG } from './catalog';
 import { ComponentEngine } from './engine';
+import { NpmDriver } from './npm-driver';
 import { ComponentStore } from './store';
 
 export async function installedProgram(id: string): Promise<string> {
-  const engine = new ComponentEngine(new ComponentStore(join(__dirname, '..', '..', '..', 'node_modules', '.cache', 'wrontend', 'components')), CATALOG);
-  if (!engine.program(id)) await engine.install(id);
-  return engine.program(id)!;
+  const npm = new NpmDriver(new ComponentStore(join(__dirname, '..', '..', '..', 'node_modules', '.cache', 'wrontend', 'components')), CATALOG);
+  if (!npm.program(id)) await new ComponentEngine([npm]).install(id);
+  return npm.program(id)!;
 }

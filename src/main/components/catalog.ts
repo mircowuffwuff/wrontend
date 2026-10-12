@@ -1,6 +1,6 @@
 // every component wrontend knows how to install
 
-import type { CatalogEntry } from './engine';
+import type { CatalogEntry } from './npm-driver';
 
 export const CATALOG: CatalogEntry[] = [
   // Claude Code's ACP adapter; the Agent SDK it depends on brings the Claude Code program for the platform

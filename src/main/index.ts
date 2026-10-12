@@ -6,6 +6,7 @@ import type { Settings } from '@shared/settings';
 import { CATALOG } from './components/catalog';
 import { ComponentEngine } from './components/engine';
 import { fakeNpm } from './components/fake-npm';
+import { NpmDriver } from './components/npm-driver';
 import { ComponentStore } from './components/store';
 import { AgentHost } from './host/agent-host';
 import { PROFILES } from './host/profiles';
@@ -53,14 +54,14 @@ const ollamaServer = new OllamaServer({
 // the smoke test sets Claude Code up with a stand-in for npm: no download, and the user's npm is never run. its first install
 // fails, so the failure is seen too
 let smokeInstalls = 0;
-const components = new ComponentEngine(
+const npm = new NpmDriver(
   new ComponentStore(join(app.getPath('userData'), 'components')),
   CATALOG,
-  (id) => {
-    for (const harness of harnesses()) if (PROFILES[harness.id]?.component === id) send(win, 'harness:changed', harness);
-  },
   smoke ? { findNpm: async () => fakeNpm(join(app.getPath('userData'), 'fake-npm'), { latest: '0.89.1', chunks: 12, fail: smokeInstalls++ === 0 }) } : {},
 );
+const components = new ComponentEngine([npm], (id) => {
+  for (const harness of harnesses()) if (PROFILES[harness.id]?.component === id) send(win, 'harness:changed', harness);
+});
 
 // the scripted test agent is offered only where it is useful: in a development run and in the smoke test
 function harnesses(): HarnessEntry[] {
@@ -249,7 +250,7 @@ app.whenReady().then(async () => {
   registerHandlers();
   await proxy.start();
   nativeTheme.themeSource = settings.value.appearance.theme;
-  host = new AgentHost(proxy, app.getPath('userData'), (component) => components.program(component), (event) => send(win, 'session:event', event), settings.value.proxy.backgroundPolicy);
+  host = new AgentHost(proxy, app.getPath('userData'), (component) => npm.program(component), (event) => send(win, 'session:event', event), settings.value.proxy.backgroundPolicy);
   monitor.start();
   createWindow();
   app.on('activate', () => {

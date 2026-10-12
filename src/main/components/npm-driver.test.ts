@@ -3,20 +3,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ComponentState } from '@shared/components';
-import { ComponentEngine, latestFrom, type CatalogEntry } from './engine';
+import { ComponentEngine } from './engine';
+import { NpmDriver, latestFrom, type CatalogEntry } from './npm-driver';
 import { fakeNpm, type FakeNpmOptions } from './fake-npm';
 import { ComponentStore } from './store';
 import { compareVersions } from './version';
 
 const ENTRY: CatalogEntry = { id: 'tool', name: 'Tool', npm: '@scope/tool', bin: 'tool', floor: '1.2.0' };
 
-function setup(npm: FakeNpmOptions) {
+function setup(fake: FakeNpmOptions) {
   const root = mkdtempSync(join(tmpdir(), 'wrontend-components-'));
   const store = new ComponentStore(join(root, 'components'));
   const states: ComponentState[] = [];
-  const options = { ...npm };
-  const engine = new ComponentEngine(store, [ENTRY], (_, s) => states.push(s), { findNpm: async () => fakeNpm(join(root, 'npm'), options), tickMs: 50 });
-  return { root, store, engine, states, options };
+  const options = { ...fake };
+  const npm = new NpmDriver(store, [ENTRY], { findNpm: async () => fakeNpm(join(root, 'npm'), options), tickMs: 50 });
+  const engine = new ComponentEngine([npm], (_, s) => states.push(s));
+  return { root, store, engine, npm, states, options };
 }
 
 describe('versions', () => {
@@ -34,16 +36,16 @@ describe('versions', () => {
   });
 });
 
-describe('the component engine', () => {
+describe('the npm driver', () => {
   it('installs the latest version into its own folder, makes it active and resolves its program', async () => {
-    const { store, engine, states } = setup({ latest: '1.3.0', chunks: 3 });
+    const { store, engine, npm, states } = setup({ latest: '1.3.0', chunks: 3 });
     expect(engine.state('tool')).toEqual({ status: 'missing' });
-    expect(engine.program('tool')).toBeNull();
+    expect(npm.program('tool')).toBeNull();
 
     await engine.install('tool');
 
     expect(engine.state('tool')).toEqual({ status: 'installed', version: '1.3.0' });
-    expect(engine.program('tool')).toBe(join(store.root, 'tool', '1.3.0', 'node_modules', '@scope', 'tool', 'dist', 'index.js'));
+    expect(npm.program('tool')).toBe(join(store.root, 'tool', '1.3.0', 'node_modules', '@scope', 'tool', 'dist', 'index.js'));
     expect(JSON.parse(readFileSync(join(store.root, 'components.json'), 'utf8'))).toEqual({ active: { tool: '1.3.0' } });
     const steps = states.filter((s) => s.status === 'installing').map((s) => s.status === 'installing' && s.step);
     expect(steps).toContain('Downloading Tool 1.3.0');
@@ -72,13 +74,13 @@ describe('the component engine', () => {
   });
 
   it('reports npm’s own reason, keeps its output, and leaves no half-installed folder', async () => {
-    const { store, engine } = setup({ latest: '1.3.0', fail: true });
+    const { store, engine, npm } = setup({ latest: '1.3.0', fail: true });
     await expect(engine.install('tool')).rejects.toThrow('404 Not Found');
     const state = engine.state('tool');
     expect(state).toMatchObject({ status: 'failed', error: '404 Not Found - GET https://registry.npmjs.org/@scope/tool@1.3.0' });
     expect(state.status === 'failed' && state.detail).toContain('npm error code E404');
     expect(readdirSync(join(store.root, 'tool'))).toEqual([]);
-    expect(engine.program('tool')).toBeNull();
+    expect(npm.program('tool')).toBeNull();
   });
 
   it('runs one install at a time, and a second call for the same component waits for the first', async () => {
@@ -94,7 +96,7 @@ describe('the component engine', () => {
     const root = mkdtempSync(join(tmpdir(), 'wrontend-components-'));
     mkdirSync(join(root, 'tool', '1.3.0.partial', 'node_modules'), { recursive: true });
     mkdirSync(join(root, 'tool', '1.2.0'), { recursive: true });
-    new ComponentEngine(new ComponentStore(root), [ENTRY]);
+    new NpmDriver(new ComponentStore(root), [ENTRY]);
     expect(readdirSync(join(root, 'tool'))).toEqual(['1.2.0']);
   });
 });

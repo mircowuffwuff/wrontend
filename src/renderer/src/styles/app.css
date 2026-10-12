@@ -1190,6 +1190,47 @@ a.button {
   color: inherit;
   text-decoration: none;
 }
+
+/* the confirmation dialog: above everything, Settings included */
+
+.confirm-backdrop {
+  z-index: 60;
+  place-items: center;
+  padding: 16px;
+}
+.confirm {
+  width: min(440px, 100%);
+  padding: 22px 24px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--leaf-lg);
+  background: var(--bg);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.36);
+  user-select: text;
+}
+.confirm h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.confirm p {
+  margin: 0;
+  color: var(--muted);
+}
+.confirm-items {
+  margin: 10px 0 0;
+  padding: 10px 14px 10px 30px;
+  border-radius: var(--leaf-md);
+  background: var(--sidebar);
+}
+.confirm-items li {
+  overflow-wrap: anywhere;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
 .button:disabled {
   opacity: 0.6;
   cursor: default;

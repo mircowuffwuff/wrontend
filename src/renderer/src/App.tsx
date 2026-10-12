@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { bridge } from './bridge';
 import { Composer } from './components/Composer';
+import { ConfirmDialog } from './components/Confirm';
 import { Icon } from './components/Icon';
 import { Leaf } from './components/Leaf';
 import { Menu } from './components/Menu';
@@ -70,6 +71,7 @@ export function App() {
         <Composer session={session} />
       </main>
       {settingsOpen && <SettingsDialog />}
+      <ConfirmDialog />
     </div>
   );
 }

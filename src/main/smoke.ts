@@ -480,6 +480,16 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
     await waitFor(`document.querySelectorAll('.group').length === 2`);
 
+    // a collapsed group stays collapsed across a reload
+    await js(`document.querySelector('.group .group-label').click()`);
+    await waitFor(`document.querySelector('.group').classList.contains('closed') && document.querySelectorAll('.session-row').length === 1`);
+    win.webContents.reload();
+    await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
+    await waitFor(`document.querySelector('.group.closed') && document.querySelectorAll('.session-row').length === 1`);
+    await shot('20-sidebar-collapsed');
+    await js(`document.querySelector('.group .group-label').click()`);
+    await waitFor(`document.querySelectorAll('.session-row').length === 2`);
+
     // Back and Forward: new session, the first group's session, the second's
     const back = `document.querySelector('.sidebar-top button[aria-label="Back"]')`;
     const forward = `document.querySelector('.sidebar-top button[aria-label="Forward"]')`;
@@ -495,9 +505,12 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await waitFor(`document.querySelectorAll('.session-row')[0].classList.contains('active') && !${back}.disabled`);
     await shot('20-sidebar-history');
 
+    // a group's + opens the new-session screen with its folder chosen
+    await js(`document.querySelectorAll('.group')[0].querySelector('.group-header .icon-button').click()`);
+    await waitFor(`document.querySelector('.greeting') && [...document.querySelectorAll('.chip.outline')].some((c) => c.title === ${JSON.stringify(other)})`);
+    await shot('20-sidebar-group-plus');
+
     // hidden, the sidebar leaves its buttons in the top bar
-    await js(`[...document.querySelectorAll('.sidebar .nav-item')].find((b) => b.textContent === 'New').click()`);
-    await waitFor(`document.querySelector('.greeting')`);
     await js(`document.querySelector('.sidebar-top button[aria-label="Hide Sidebar"]').click()`);
     await waitFor(`!document.querySelector('.sidebar') && document.querySelector('.top-bar button[aria-label="Show Sidebar"]')`);
     await js(`document.querySelector('.top-bar button[aria-label="Back"]').click()`);

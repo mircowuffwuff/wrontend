@@ -162,15 +162,35 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px 4px 18px;
+  padding: 2px 14px 2px 18px;
   color: var(--muted);
   font-size: 13px;
 }
-.group-header .name {
-  flex: 1;
+.group-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-right: auto;
+  padding: 2px 0;
+  color: inherit;
+  text-align: left;
+}
+.group-label:hover {
+  color: var(--text);
+}
+.group-label .name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.group-label .chevron {
+  display: inline-grid;
+  flex-shrink: 0;
+}
+/* a collapsed group always says so; an open one shows its chevron only while the pointer is on the group */
+.group:not(.closed):not(:hover) .group-label:not(:focus-visible) .chevron {
+  visibility: hidden;
 }
 
 .empty-hint {

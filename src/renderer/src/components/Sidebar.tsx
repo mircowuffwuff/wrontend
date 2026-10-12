@@ -1,8 +1,9 @@
 import { outdated } from '@shared/updates';
+import { useDraft } from '../state/draft';
 import { useOllama } from '../state/ollama';
 import { useSessions } from '../state/sessions';
 import { useSettings } from '../state/settings';
-import { useSidebar } from '../state/sidebar';
+import { folderName, useSidebar } from '../state/sidebar';
 import { useUpdates } from '../state/updates';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
@@ -65,6 +66,7 @@ function OllamaStatusRow() {
 
 function SessionList() {
   const { sessions, order, activeId, open } = useSessions();
+  const { collapsed, toggleGroup } = useSidebar();
   if (order.length === 0) return <div className="empty-hint">Sessions appear here, grouped by folder.</div>;
   // grouped by folder, the folder with the newest session first
   const groups = new Map<string, string[]>();
@@ -76,21 +78,39 @@ function SessionList() {
     <>
       {[...groups].map(([folderId, ids]) => {
         const { folder } = sessions[ids[0]].info;
+        const closed = collapsed.includes(folderId);
         return (
-          <div key={folderId} className="group">
-            <div className="group-header" title={folder}>
-              <span className="name">{folder.split(/[\\/]/).pop()}</span>
+          <div key={folderId} className={`group${closed ? ' closed' : ''}`}>
+            <div className="group-header">
+              <button className="group-label" title={folder} aria-expanded={!closed} onClick={() => toggleGroup(folderId)}>
+                <span className="name">{folderName(folder)}</span>
+                <span className="chevron">
+                  <Icon name={closed ? 'chevronRight' : 'chevronDown'} size={14} />
+                </span>
+              </button>
+              <button
+                className="icon-button small"
+                aria-label={`New Session in ${folderName(folder)}`}
+                title={`New session in ${folderName(folder)}`}
+                onClick={() => {
+                  useDraft.getState().setFolder(folder);
+                  open(null);
+                }}
+              >
+                <Icon name="plus" size={16} />
+              </button>
             </div>
-            {ids.map((id) => {
-              const s = sessions[id];
-              const live = s.running || s.permissions.length > 0;
-              return (
-                <button key={id} className={`nav-item session-row${id === activeId ? ' active' : ''}`} onClick={() => open(id)}>
-                  <Leaf size={7} color={s.permissions.length ? 'var(--mustard)' : live ? 'var(--accent)' : 'var(--line)'} />
-                  <span className="name">{s.info.title}</span>
-                </button>
-              );
-            })}
+            {!closed &&
+              ids.map((id) => {
+                const s = sessions[id];
+                const live = s.running || s.permissions.length > 0;
+                return (
+                  <button key={id} className={`nav-item session-row${id === activeId ? ' active' : ''}`} onClick={() => open(id)}>
+                    <Leaf size={7} color={s.permissions.length ? 'var(--mustard)' : live ? 'var(--accent)' : 'var(--line)'} />
+                    <span className="name">{s.info.title}</span>
+                  </button>
+                );
+              })}
           </div>
         );
       })}

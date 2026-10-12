@@ -21,3 +21,5 @@ win:
   target:
     - target: zip
       arch: x64
+  # rendered from build/icon.svg by scripts/render-icon.mjs
+  icon: build/icon.ico

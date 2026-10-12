@@ -1,14 +1,16 @@
 // a harness profile is plain data: what to start, with which environment, pointed at which proxy route
 
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { BACKGROUND_MODEL, MAIN_MODEL } from '@shared/proxy';
+import { onOwnNode } from '../components/npm';
 
 export interface LaunchContext {
   // the session's own proxy base URL
   proxyUrl: string;
   // a folder of wrontend's own where the harness keeps its config and history
   harnessHome: string;
+  // the program of the harness's installed component, as the component resolver finds it; null for a built-in harness
+  program: string | null;
 }
 
 export interface HarnessProfile {
@@ -19,20 +21,14 @@ export interface HarnessProfile {
   launch(ctx: LaunchContext): { command: string; args: string[]; env: Record<string, string> };
 }
 
-const require = createRequire(__filename);
-
-// a Node script inside wrontend's own dependencies, run by the runtime wrontend itself runs on
-function nodeScript(script: string): { command: string; args: string[]; env: Record<string, string> } {
-  return { command: process.execPath, args: [script], env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {} };
-}
-
 export const claudeCode: HarnessProfile = {
   id: 'claude-code',
   name: 'Claude Code',
   component: 'claude-code',
-  launch({ proxyUrl, harnessHome }) {
-    const pkg = require.resolve('@agentclientprotocol/claude-agent-acp/package.json');
-    const base = nodeScript(join(dirname(pkg), 'dist', 'index.js'));
+  launch({ proxyUrl, harnessHome, program }) {
+    if (!program) throw new Error('Claude Code is not set up. Pick it from the harness chip on a new session to set it up.');
+    // the adapter runs on Electron's own Node, whichever npm installed it, so the runtime is the same on every machine
+    const base = onOwnNode(program);
     return {
       ...base,
       env: {
@@ -60,7 +56,7 @@ export const fake: HarnessProfile = {
   name: 'Fake Agent',
   component: null,
   launch() {
-    return nodeScript(join(__dirname, 'fake-agent.js'));
+    return onOwnNode(join(__dirname, 'fake-agent.js'));
   },
 };
 

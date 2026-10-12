@@ -249,7 +249,7 @@ app.whenReady().then(async () => {
   registerHandlers();
   await proxy.start();
   nativeTheme.themeSource = settings.value.appearance.theme;
-  host = new AgentHost(proxy, app.getPath('userData'), (event) => send(win, 'session:event', event), settings.value.proxy.backgroundPolicy);
+  host = new AgentHost(proxy, app.getPath('userData'), (component) => components.program(component), (event) => send(win, 'session:event', event), settings.value.proxy.backgroundPolicy);
   monitor.start();
   createWindow();
   app.on('activate', () => {

@@ -22,6 +22,8 @@ const STDERR_KEEP = 40;
 export interface AgentSessionOptions {
   id: string;
   profile: HarnessProfile;
+  // the program of the profile's installed component; null for a built-in harness
+  program: string | null;
   folder: string;
   harnessHome: string;
   route: RouteHandle;
@@ -53,7 +55,7 @@ export class AgentSession {
   // with resumeId, reopens the harness's earlier session; returns how it started
   async start(resumeId: string | null = null): Promise<'new' | 'resumed' | 'fresh-after-resume-failed'> {
     mkdirSync(this.o.harnessHome, { recursive: true });
-    const launch = this.o.profile.launch({ proxyUrl: this.o.route.baseUrl, harnessHome: this.o.harnessHome });
+    const launch = this.o.profile.launch({ proxyUrl: this.o.route.baseUrl, harnessHome: this.o.harnessHome, program: this.o.program });
     const child = spawn(launch.command, launch.args, {
       cwd: this.o.folder,
       env: { ...inheritedEnv(), ...launch.env },

@@ -30,6 +30,8 @@ export class AgentHost {
     private readonly proxy: ProxyServer,
     // wrontend's own data folder: sessions are stored under it, and each harness keeps its config there
     dataDir: string,
+    // the component resolver: an installed component's program, or null when it is not installed
+    private readonly programOf: (component: string) => string | null,
     private readonly emit: (event: SessionEvent) => void,
     private backgroundPolicy: BackgroundPolicy = 'local-titles',
   ) {
@@ -159,6 +161,7 @@ export class AgentHost {
     const agent = new AgentSession({
       id: info.id,
       profile,
+      program: profile.component ? this.programOf(profile.component) : null,
       folder: info.folder,
       harnessHome: join(this.dataDir, 'harness', profile.id),
       route,

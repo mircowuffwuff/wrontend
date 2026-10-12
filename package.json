@@ -14,7 +14,6 @@
     "smoke": "electron-vite build && electron . --smoke=out/smoke"
   },
   "dependencies": {
-    "@agentclientprotocol/claude-agent-acp": "^0.89.1",
     "@agentclientprotocol/sdk": "^1.8.0",
     "@fontsource/dm-mono": "^5.3.0",
     "@fontsource/dm-sans": "^5.3.0",

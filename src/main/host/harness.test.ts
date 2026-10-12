@@ -1,5 +1,6 @@
 // tests against the real claude-agent-acp that never reach a model: its proxy route points at a dead address.
-// off by default -- WRONTEND_HARNESS_TESTS=1 turns them on; they need no GPU and no Ollama, only the installed adapter
+// off by default -- WRONTEND_HARNESS_TESTS=1 turns them on; they need no GPU and no Ollama, only the adapter, which the first
+// run installs
 
 import { spawn } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
@@ -11,6 +12,7 @@ import { Readable, Writable } from 'node:stream';
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import { describe, expect, it } from 'vitest';
 import type { SessionEvent } from '@shared/session';
+import { installedProgram } from '../components/testing';
 import { ProxyServer } from '../proxy/server';
 import { AgentHost } from './agent-host';
 import { claudeCode } from './profiles';
@@ -18,8 +20,8 @@ import { claudeCode } from './profiles';
 const on = process.env.WRONTEND_HARNESS_TESTS === '1';
 const temp = (prefix: string) => realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
 
-function connect(home: string, folder: string) {
-  const launch = claudeCode.launch({ proxyUrl: 'http://127.0.0.1:1/s/dead', harnessHome: home });
+function connect(program: string, home: string, folder: string) {
+  const launch = claudeCode.launch({ proxyUrl: 'http://127.0.0.1:1/s/dead', harnessHome: home, program });
   const child = spawn(launch.command, launch.args, { cwd: folder, env: { ...process.env, ...launch.env }, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
   const connection = client({ name: 'wrontend-test' })
     .onNotification('session/update', () => {})
@@ -32,14 +34,15 @@ describe.skipIf(!on)('claude-agent-acp without a model', () => {
     const home = temp('wrontend-home-');
     const folder = temp('wrontend-project-');
 
-    const first = connect(home, folder);
+    const program = await installedProgram('claude-code');
+    const first = connect(program, home, folder);
     const init = await first.agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} });
     console.log('capabilities:', JSON.stringify(init.agentCapabilities));
     const created = await first.agent.request('session/new', { cwd: folder, mcpServers: [] });
     console.log('modes:', JSON.stringify(created.modes?.availableModes?.map((m) => m.id)), 'config:', JSON.stringify(created.configOptions?.map((o) => o.id)));
     first.close();
 
-    const second = connect(home, folder);
+    const second = connect(program, home, folder);
     await second.agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} });
     const outcome: Record<string, string> = {};
     for (const method of ['session/resume', 'session/load'] as const) {
@@ -112,7 +115,8 @@ describe.skipIf(!on)('Claude Code against a fake model', () => {
     const folder = temp('wrontend-project-');
     const events: SessionEvent[] = [];
 
-    const first = new AgentHost(proxy, dataDir, (e) => events.push(e));
+    const program = await installedProgram('claude-code');
+    const first = new AgentHost(proxy, dataDir, () => program, (e) => events.push(e));
     const { info, modes } = await first.create({ harness: 'claude-code', folder, model: 'fake-model', effort: 'off' });
     expect(modes?.available.map((m) => m.id)).toContain('plan');
     await first.setMode(info.id, 'plan');
@@ -125,7 +129,7 @@ describe.skipIf(!on)('Claude Code against a fake model', () => {
     first.disposeAll();
 
     const mark = events.length;
-    const second = new AgentHost(proxy, dataDir, (e) => events.push(e));
+    const second = new AgentHost(proxy, dataDir, () => program, (e) => events.push(e));
     const stored = second.stored();
     expect(stored.map((s) => s.info.id)).toEqual([info.id]);
     expect(stored[0].items).toHaveLength(1);

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RequestStats } from '@shared/proxy';
 import type { SessionEvent } from '@shared/session';
+import { installedProgram } from '../components/testing';
 import { resolveBaseUrl } from '../ollama/client';
 import { ProxyServer } from '../proxy/server';
 import { AgentHost } from './agent-host';
@@ -41,7 +42,8 @@ describe.skipIf(!live)('Claude Code end to end', () => {
         }
         if (e.type === 'turn-end' || e.type === 'exit') console.log(JSON.stringify(e).slice(0, 600));
       };
-      host = new AgentHost(proxy, dataDir, emit);
+      const program = await installedProgram('claude-code');
+      host = new AgentHost(proxy, dataDir, () => program, emit);
 
       const model = process.env.WRONTEND_MODEL ?? 'qwen3.8:27b-ud-iq3_s-derived-renderer';
       const { info } = await host.create({ harness: 'claude-code', folder, model, effort: 'on' });

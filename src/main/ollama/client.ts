@@ -71,6 +71,12 @@ export class OllamaClient {
     return parseShow(name, s);
   }
 
+  // the sha256 of each file the model is made from -- its weights and projector -- read off the FROM lines of its Modelfile
+  async blobs(name: string): Promise<string[]> {
+    const s = await this.post<ShowResponse>('/api/show', { model: name });
+    return [...(s.modelfile ?? '').matchAll(/^FROM\s+.*sha256[-:]([0-9a-f]{64})\s*$/gm)].map((m) => m[1]);
+  }
+
   // a model made from another one already in Ollama: new settings over the same weights, so nothing is downloaded and only a
   // manifest and a small layer are written. it takes seconds, longer than a read
   async create(request: CreateRequest): Promise<void> {

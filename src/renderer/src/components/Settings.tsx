@@ -350,6 +350,36 @@ function sections(o: {
       ],
     },
     {
+      id: 'models',
+      label: 'Models',
+      icon: 'model',
+      area: 'Settings',
+      groups: [
+        {
+          heading: 'Reasoning',
+          rows: [
+            {
+              id: 'derive',
+              label: 'Copies with a renderer',
+              description:
+                'A thinking model without a renderer loses its earlier reasoning in Ollama. Where wrontend knows the renderer for the model’s family, it makes a copy of the model with that renderer and sends your pick there. The copy shares the original’s files, and other Ollama apps list it with wrontend-derived in its tag.',
+              control: (
+                <Segmented
+                  label="Copies with a renderer"
+                  value={settings.models.derive ? 'on' : 'off'}
+                  options={[
+                    { value: 'on', label: 'On' },
+                    { value: 'off', label: 'Off' },
+                  ]}
+                  onChange={(v) => void update({ models: { derive: v === 'on' } })}
+                />
+              ),
+            },
+          ],
+        },
+      ],
+    },
+    {
       id: 'proxy',
       label: 'Proxy',
       icon: 'proxy',

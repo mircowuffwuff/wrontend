@@ -1,10 +1,12 @@
 // the prompt box with what sits above it (new session only) and the pickers below it
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import type { AvailableCommand } from '@agentclientprotocol/sdk';
 import { bridge } from '../bridge';
 import type { ComponentState, HarnessEntry } from '@shared/components';
 import type { ModelEntry, ModelReasoning } from '@shared/ollama';
 import { useBrowser } from '../state/browser';
+import { matchCommands, pickedText, slashQuery } from '../state/commands';
 import { confirm } from '../state/confirm';
 import { useDraft } from '../state/draft';
 import { isReady, useHarnesses } from '../state/harnesses';
@@ -17,9 +19,11 @@ import { Icon } from './Icon';
 import { ContextLeaves, Leaf } from './Leaf';
 import { Menu } from './Menu';
 import { PermissionPrompt } from './Permission';
+import { SlashMenu } from './SlashMenu';
 
 // one shared empty list: a selector that returns a new array each time makes zustand re-render without end
 const NO_CARDS: QuoteCard[] = [];
+const NO_COMMANDS: AvailableCommand[] = [];
 
 function gb(bytes: number): string {
   return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -169,6 +173,9 @@ async function deleteModel(entry: ModelEntry): Promise<string | null> {
 export function Composer({ session }: { session: SessionView | null }) {
   const [text, setText] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // the slash menu: the row the keys move, and whether Esc or a lost focus closed it -- until the text next changes
+  const [active, setActive] = useState(0);
+  const [closed, setClosed] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const models = useOllama((s) => s.models);
   const loaded = useOllama((s) => s.status?.loaded);
@@ -182,6 +189,31 @@ export function Composer({ session }: { session: SessionView | null }) {
   const effort = fresh ? draft.effort : session.info.effort;
   const running = !!session?.running || creating;
   const permission = session?.permissions[0] ?? null;
+
+  // a new session has no harness running yet, so no commands to offer
+  const commands = session?.commands ?? NO_COMMANDS;
+  const query = slashQuery(text);
+  const matches = useMemo(() => (query === null ? [] : matchCommands(commands, query)), [commands, query]);
+  const menuOpen = matches.length > 0 && !closed;
+  useEffect(() => setActive(0), [query]);
+
+  const pick = (index: number) => {
+    const match = matches[index];
+    if (match) setText(pickedText(match.command));
+    area.current?.focus();
+  };
+
+  // the menu takes the keys it uses, and marks them handled so a permission request underneath does not take Esc too
+  const menuKey = (e: KeyboardEvent): boolean => {
+    if (!menuOpen) return false;
+    if (e.key === 'ArrowDown') setActive((a) => (a + 1) % matches.length);
+    else if (e.key === 'ArrowUp') setActive((a) => (a - 1 + matches.length) % matches.length);
+    else if ((e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) || e.key === 'Tab') pick(active);
+    else if (e.key === 'Escape') setClosed(true);
+    else return false;
+    e.preventDefault();
+    return true;
+  };
 
   // the box grows with its text up to its maximum height
   useEffect(() => {
@@ -276,14 +308,25 @@ ${c.reply}` : c.quote}>
               ))}
             </div>
           )}
+          {menuOpen && <SlashMenu matches={matches} query={query ?? ''} active={active} onActive={setActive} onPick={pick} />}
           <div className="prompt-row">
+          {menuOpen && text === '/' && (
+            <span className="slash-ghost" aria-hidden>
+              <span className="slash-ghost-typed">/</span>Type to filter
+            </span>
+          )}
           <textarea
             ref={area}
             rows={1}
             value={text}
             placeholder={fresh ? 'Describe a task or ask a question' : 'Type / for commands'}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setClosed(false);
+            }}
+            onBlur={() => setClosed(true)}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || menuKey(e)) return;
               if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                 e.preventDefault();
                 send();

@@ -20,6 +20,8 @@ export function PermissionPrompt({ request, onAnswer }: { request: PermissionReq
   // the reference's keys: 1 rejects, 2 or Ctrl+Enter allows once, Esc dismisses
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // a key the prompt box already used, such as the Esc that closes the slash menu
+      if (e.defaultPrevented) return;
       const typing = (e.target as HTMLElement | null)?.tagName === 'TEXTAREA' && !e.ctrlKey;
       if (e.key === 'Escape') onAnswer(reject?.optionId ?? null);
       else if (typing) return;

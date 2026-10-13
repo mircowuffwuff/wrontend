@@ -1927,3 +1927,64 @@ a.button {
   font-size: 11px;
   white-space: pre-wrap;
 }
+
+/* slash commands: a list of names over the prompt box's left edge, the active one's description in a tooltip beside it */
+
+.prompt-box,
+.prompt-row {
+  position: relative;
+}
+.slash-menu {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 6px);
+  left: 0;
+}
+.slash-menu .menu {
+  position: relative;
+  width: 300px;
+  max-height: 420px;
+}
+/* the last visible row fades while more are below it */
+.slash-menu .menu.more {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+.slash-menu .menu-item {
+  font-size: 14px;
+}
+/* only the active row is lit: the keys move it as well as the pointer */
+.slash-menu .menu-item:hover {
+  background: none;
+}
+.slash-menu .menu-item.active {
+  background: var(--selected);
+}
+.slash-menu strong {
+  font-weight: 700;
+}
+.slash-tip {
+  position: absolute;
+  left: calc(100% + 6px);
+  width: max-content;
+  max-width: 360px;
+  padding: 6px 12px;
+  border-radius: var(--leaf-sm);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+/* what the textarea's placeholder would say after a lone slash, which a placeholder cannot. the row's items sit on its
+   bottom edge, the send button being taller than one line */
+.slash-ghost {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  line-height: 1.6;
+  color: var(--muted);
+  pointer-events: none;
+}
+.slash-ghost-typed {
+  visibility: hidden;
+}

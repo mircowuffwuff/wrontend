@@ -66,6 +66,15 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
       box.dispatchEvent(new Event('input', { bubbles: true }));
       box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     })()`);
+  // sets the prompt box without sending it, and presses a key in it
+  const fill = (text: string) =>
+    js(`(() => {
+      const box = document.querySelector('.prompt-box textarea');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+  const press = (key: string) => js(`document.querySelector('.prompt-box textarea').dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`);
+  const slashRows = () => js<string[]>(`[...document.querySelectorAll('.slash-menu .menu-item')].map((b) => b.textContent)`);
   const step = async (name: string, run: () => Promise<void>) => {
     const started = Date.now();
     try {
@@ -204,6 +213,36 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await js(`[...document.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Plan Mode')).click()`);
     await waitFor(`[...document.querySelectorAll('.under-row .picker')].some((b) => b.textContent.trim() === 'Plan Mode')`);
   });
+  // the fake agent's commands, sent just after the session was created: a lone slash lists them all, typing filters them
+  // (names first, then descriptions), the keys move and pick, and a picked command is sent as typed text
+  await step('07-slash-commands', async () => {
+    await fill('/');
+    await waitFor(`document.querySelectorAll('.slash-menu .menu-item').length === 5`);
+    const first = await js<{ ghost: string | null; tip: string | null }>(`({
+      ghost: document.querySelector('.slash-ghost')?.textContent ?? null,
+      tip: document.querySelector('.slash-tip')?.textContent ?? null,
+    })`);
+    if (first.ghost !== '/Type to filter' || first.tip !== 'Summarise the conversation to free up context') throw new Error(`the open menu reads ${JSON.stringify(first)}`);
+    await shot('07-slash-menu');
+    await fill('/re');
+    await waitFor(`!document.querySelector('.slash-ghost')`);
+    const filtered = await slashRows();
+    // review by its name, compact by its description's "free"
+    if (filtered.join() !== 'review,compact') throw new Error(`/re lists ${filtered.join(', ')}`);
+    if ((await js<string>(`document.querySelector('.slash-menu .menu-item strong')?.textContent`)) !== 're') throw new Error('the match in a name is not bold');
+    await press('ArrowDown');
+    await waitFor(`document.querySelector('.slash-menu .menu-item.active')?.textContent === 'compact' && document.querySelector('.slash-tip')?.textContent.startsWith('Summarise')`);
+    await shot('07-slash-filtered');
+    await press('Escape');
+    await waitFor(`!document.querySelector('.slash-menu')`);
+    await fill('/r');
+    await waitFor(`document.querySelector('.slash-menu')`);
+    await press('Tab');
+    await waitFor(`!document.querySelector('.slash-menu') && document.querySelector('.prompt-box textarea').value === '/review '`);
+    await type('/review main');
+    await waitFor(`[...document.querySelectorAll('.transcript > .markdown')].some((m) => m.textContent.includes('Ran /review with “main”'))`);
+    await waitFor(`!document.querySelector('.send.stop')`);
+  });
   await step('07-light-theme', async () => {
     nativeTheme.themeSource = 'light';
     await new Promise((r) => setTimeout(r, 400));
@@ -265,6 +304,11 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     if (!kept) throw new Error('the restored transcript lost its answer, its Stopped line or its error');
     const mode = await js<boolean>(`[...document.querySelectorAll('.under-row .picker')].some((b) => b.textContent.trim() === 'Plan Mode')`);
     if (!mode) throw new Error('the restored session no longer shows the mode it was left in');
+    // its harness is not running, and its commands come from disk
+    await fill('/');
+    await waitFor(`document.querySelectorAll('.slash-menu .menu-item').length === 5`);
+    await press('Escape');
+    await fill('');
     // the tool group comes back collapsed, so fewer blocks are open than before
     if (after < 6) throw new Error(`the transcript had ${before} blocks before the reload and ${after} after`);
     await js(`document.querySelector('.content').scrollTop = 0`);
@@ -280,6 +324,11 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await waitFor(`!document.querySelector('.session-row') && document.querySelector('.greeting')`);
     const left = await js<number>(`window.wrontend.invoke('session:stored').then((s) => s.length)`);
     if (left !== 0) throw new Error(`${left} sessions are still stored after deleting the only one`);
+    // no harness runs for a session not yet made, so it offers no commands
+    await fill('/');
+    await new Promise((r) => setTimeout(r, 200));
+    if (await js<boolean>(`!!document.querySelector('.slash-menu')`)) throw new Error('the new-session screen offers slash commands');
+    await fill('');
     await shot('09-new-session-screen');
   });
   // clicks a control in the Settings dialog by its row's label and the control's text or title

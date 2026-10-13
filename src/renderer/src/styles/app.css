@@ -665,6 +665,29 @@ button.chip:hover {
   gap: 5px;
 }
 
+/* an item with its letter at the row's end */
+.menu-item.with-shortcut {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 24px;
+  align-items: center;
+}
+.menu-item.with-shortcut .detail {
+  grid-column: 1;
+}
+.menu-item .shortcut {
+  color: var(--muted);
+  font-size: 13px;
+}
+.menu-item.danger .label {
+  color: var(--remove);
+}
+.menu-rule {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--line);
+}
+
 .menu-empty {
   padding: 8px 10px;
   font-size: 13px;

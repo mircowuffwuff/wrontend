@@ -1,6 +1,6 @@
 // a small popover list anchored above or below its trigger
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 
 export interface MenuItem {
@@ -10,6 +10,12 @@ export interface MenuItem {
   label: ReactNode;
   detail?: ReactNode;
   selected?: boolean;
+  // a letter at the row's end, muted, that picks the item while the menu is open
+  shortcut?: string;
+  // drawn in red: the item removes something
+  danger?: boolean;
+  // a rule above the item starts a new group
+  rule?: boolean;
   // a button at the row's end that does something to the item instead of picking it
   action?: MenuAction;
 }
@@ -35,6 +41,7 @@ export function Menu({
   title,
   footer,
   fixed = false,
+  menuClass,
 }: {
   trigger: ReactNode;
   items: MenuItem[];
@@ -49,6 +56,7 @@ export function Menu({
   // placed against the window rather than its trigger, so a scrolling container around the trigger does not clip it; a
   // scroll closes it, since it would no longer sit by its trigger
   fixed?: boolean;
+  menuClass?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<CSSProperties>({});
@@ -59,17 +67,26 @@ export function Menu({
     const close = (e: MouseEvent) => {
       if (!root.current?.contains(e.target as Node)) setOpen(false);
     };
-    const escape = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return setOpen(false);
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      const item = items.find((i) => i.shortcut?.toLowerCase() === e.key.toLowerCase());
+      if (!item) return;
+      // the letter is not typed into whatever takes the focus next, such as a rename's field
+      e.preventDefault();
+      setOpen(false);
+      onPick(item.key);
+    };
     const scrolled = () => setOpen(false);
     document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', escape);
+    document.addEventListener('keydown', keys);
     if (fixed) document.addEventListener('scroll', scrolled, true);
     return () => {
       document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', escape);
+      document.removeEventListener('keydown', keys);
       document.removeEventListener('scroll', scrolled, true);
     };
-  }, [open, fixed]);
+  }, [open, fixed, items, onPick]);
 
   const toggle = () => {
     if (!open && fixed && root.current) {
@@ -88,25 +105,30 @@ export function Menu({
         {trigger}
       </button>
       {open && (
-        <div className={`menu ${fixed ? 'fixed' : `${placement} ${align}`}`} style={fixed ? position : undefined} role="listbox">
+        <div className={`menu ${fixed ? 'fixed' : `${placement} ${align}`}${menuClass ? ` ${menuClass}` : ''}`} style={fixed ? position : undefined} role="listbox">
           {items.length === 0 && <div className="menu-empty">{empty}</div>}
           {items.map((item) => (
-            <div key={item.key} className={`menu-row${item.selected ? ' selected' : ''}`}>
-              <button
-                role="option"
-                aria-selected={item.selected}
-                className={`menu-item${item.icon ? ' with-icon' : ''}`}
-                onClick={() => {
-                  setOpen(false);
-                  onPick(item.key);
-                }}
-              >
-                {item.icon && <span className="menu-icon">{item.icon}</span>}
-                <span className="label">{item.label}</span>
-                {item.detail && <span className="detail">{item.detail}</span>}
-              </button>
-              {item.action && <RowAction action={item.action} close={() => setOpen(false)} />}
-            </div>
+            <Fragment key={item.key}>
+              {item.rule && <div className="menu-rule" role="separator" />}
+              <div className={`menu-row${item.selected ? ' selected' : ''}`}>
+                <button
+                  role="option"
+                  aria-selected={item.selected}
+                  aria-keyshortcuts={item.shortcut}
+                  className={`menu-item${item.icon ? ' with-icon' : ''}${item.shortcut ? ' with-shortcut' : ''}${item.danger ? ' danger' : ''}`}
+                  onClick={() => {
+                    setOpen(false);
+                    onPick(item.key);
+                  }}
+                >
+                  {item.icon && <span className="menu-icon">{item.icon}</span>}
+                  <span className="label">{item.label}</span>
+                  {item.shortcut && <span className="shortcut">{item.shortcut}</span>}
+                  {item.detail && <span className="detail">{item.detail}</span>}
+                </button>
+                {item.action && <RowAction action={item.action} close={() => setOpen(false)} />}
+              </div>
+            </Fragment>
           ))}
           {footer && (
             <button

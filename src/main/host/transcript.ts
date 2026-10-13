@@ -95,6 +95,21 @@ export function endTurn(items: TranscriptItem[], now = Date.now()): TranscriptIt
   return closeThought(items, now);
 }
 
+// a stored transcript with every item's id its own: one written with ids numbered afresh at every launch can hold an id
+// twice. the first item with an id keeps it, and a later one gets a new one
+export function uniqueIds(items: TranscriptItem[]): TranscriptItem[] {
+  const seen = new Set<string>();
+  return items.map((item) => {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      return item;
+    }
+    const id = nextId(item.kind.charAt(0));
+    seen.add(id);
+    return { ...item, id };
+  });
+}
+
 // the files a turn changed, at its end; a turn that changed none adds nothing
 export function addEdits(items: TranscriptItem[], files: EditedFile[]): TranscriptItem[] {
   if (!files.length) return items;

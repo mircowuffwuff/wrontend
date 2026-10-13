@@ -6,7 +6,7 @@
 import type { CreateSessionOptions, Quote, SessionChange, SessionState } from '@shared/session';
 import type { AgentHost } from './agent-host';
 import type { SessionEvent } from './session';
-import { addEdits, addError, addNotice, addUser, applyUpdate, endTurn, firstChange } from './transcript';
+import { addEdits, addError, addNotice, addUser, applyUpdate, endTurn, firstChange, uniqueIds } from './transcript';
 
 type Host = Pick<AgentHost, 'stored' | 'info' | 'create' | 'prompt' | 'cancel' | 'answer' | 'setModel' | 'setEffort' | 'setMode' | 'rename' | 'delete' | 'saveItems'>;
 
@@ -17,11 +17,12 @@ export class SessionStates {
     private readonly host: Host,
     private readonly emit: (change: SessionChange) => void,
   ) {
-    // a thought a crash left open is closed; a turn an earlier run left running is over
+    // a thought a crash left open is closed, a turn an earlier run left running is over, and an id stored twice is made
+    // unique
     for (const s of host.stored()) {
       this.states.set(s.info.id, {
         info: s.info,
-        items: endTurn(s.items),
+        items: uniqueIds(endTurn(s.items)),
         turnStartedAt: null,
         permissions: [],
         modes: s.modes,

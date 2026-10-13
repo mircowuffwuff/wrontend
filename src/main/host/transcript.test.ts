@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUpdate } from '@agentclientprotocol/sdk';
 import type { TranscriptItem } from '@shared/session';
-import { addEdits, addUser, applyUpdate, firstChange } from './transcript';
+import { addEdits, addUser, applyUpdate, firstChange, uniqueIds } from './transcript';
 
 const text = (t: string) => ({ type: 'text' as const, text: t });
 
@@ -65,6 +65,21 @@ describe('addEdits', () => {
     const items = run([{ sessionUpdate: 'agent_message_chunk', content: text('Done.') }]);
     expect(addEdits(items, [])).toBe(items);
     expect(addEdits(items, [file]).map((i) => i.kind)).toEqual(['user', 'assistant', 'edits']);
+  });
+});
+
+describe('uniqueIds', () => {
+  it('gives a later item with an id already used a new one, and leaves the rest as they are', () => {
+    const items: TranscriptItem[] = [
+      { kind: 'user', id: 'u-1', text: 'a' },
+      { kind: 'assistant', id: 'a-1', text: 'b' },
+      { kind: 'user', id: 'u-1', text: 'c' },
+    ];
+    const fixed = uniqueIds(items);
+    expect(fixed[0]).toBe(items[0]);
+    expect(fixed[1]).toBe(items[1]);
+    expect(fixed[2]).toMatchObject({ kind: 'user', text: 'c' });
+    expect(new Set(fixed.map((i) => i.id)).size).toBe(3);
   });
 });
 

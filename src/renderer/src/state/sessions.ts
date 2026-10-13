@@ -37,6 +37,7 @@ interface SessionsState {
   setModel(id: string, model: string): Promise<void>;
   setEffort(id: string, effort: Effort): Promise<void>;
   setMode(id: string, modeId: string): Promise<void>;
+  rename(id: string, title: string): Promise<void>;
   remove(id: string): Promise<void>;
   open(id: string | null): void;
   back(): void;
@@ -140,6 +141,17 @@ export const useSessions = create<SessionsState>((set, get) => ({
       set((s) => patch(s, id, (v) => ({ info: { ...v.info, mode: modeId }, modes: { ...v.modes, current: modeId } })));
     } catch (cause) {
       set((s) => patch(s, id, (v) => ({ items: addError(v.items, 'The mode could not be changed.', String(cause)) })));
+    }
+  },
+
+  // shown at once, so the field does not give way to the old title first; put back if main cannot keep it
+  async rename(id, title) {
+    const before = get().sessions[id]?.info.title;
+    set((s) => patch(s, id, (v) => ({ info: { ...v.info, title } })));
+    try {
+      await bridge.invoke('session:rename', id, title);
+    } catch {
+      if (before !== undefined) set((s) => patch(s, id, (v) => ({ info: { ...v.info, title: before } })));
     }
   },
 

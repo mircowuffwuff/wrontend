@@ -58,6 +58,7 @@ export interface InvokeMap {
   'session:stored': { args: []; result: StoredSession[] };
   'session:create': { args: [options: CreateSessionOptions]; result: CreatedSession };
   'session:save-items': { args: [id: string, items: unknown[]]; result: void };
+  'session:rename': { args: [id: string, title: string]; result: void };
   'session:delete': { args: [id: string]; result: void };
   'session:prompt': { args: [id: string, text: string]; result: void };
   'session:cancel': { args: [id: string]; result: void };

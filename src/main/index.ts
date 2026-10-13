@@ -341,6 +341,7 @@ function registerHandlers(): void {
   handle('session:stored', () => sessions().stored());
   handle('session:create', (options) => sessions().create(options));
   handle('session:save-items', (id, items) => sessions().saveItems(id, items));
+  handle('session:rename', (id, title) => sessions().rename(id, title));
   handle('session:delete', (id) => sessions().delete(id));
   handle('session:prompt', (id, text) => sessions().prompt(id, text));
   handle('session:cancel', (id) => sessions().cancel(id));

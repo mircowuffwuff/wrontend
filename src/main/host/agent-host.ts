@@ -137,6 +137,15 @@ export class AgentHost {
     this.persist(entry);
   }
 
+  // the title is wrontend's own: ACP has no rename, so the harness is not told
+  rename(id: string, title: string): void {
+    const entry = this.get(id);
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    entry.info.title = trimmed;
+    this.persist(entry);
+  }
+
   // the renderer owns the transcript's shape; main only keeps it
   saveItems(id: string, items: unknown[]): void {
     const entry = this.sessions.get(id);

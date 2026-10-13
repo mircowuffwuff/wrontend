@@ -42,6 +42,39 @@ function Thought({ item, now }: { item: Extract<TranscriptItem, { kind: 'thought
   );
 }
 
+// a long message is clipped to a few lines, with Show more under it; whether it is long is measured, so a narrow window
+// clips a message a wide one shows whole
+function UserMessage({ text }: { text: string }) {
+  const body = useRef<HTMLDivElement>(null);
+  const [long, setLong] = useState(false);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const el = body.current;
+    if (!el) return;
+    // measured while clipped: an open message keeps whatever it was
+    const measure = () => {
+      if (!el.classList.contains('clip')) return;
+      setLong(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [text]);
+  return (
+    <div className="user-message">
+      <div ref={body} className={open ? 'user-text' : `user-text clip${long ? ' faded' : ''}`}>
+        <Markdown text={text} />
+      </div>
+      {long && (
+        <button className="show-more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {open ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ErrorBlock({ item }: { item: Extract<TranscriptItem, { kind: 'error' }> }) {
   const [open, setOpen] = useState(false);
   return (
@@ -90,11 +123,7 @@ export function Transcript({ session }: { session: SessionView }) {
           const item = block.item;
           switch (item.kind) {
             case 'user':
-              return (
-                <div key={item.id} className="user-message">
-                  <Markdown text={item.text} />
-                </div>
-              );
+              return <UserMessage key={item.id} text={item.text} />;
             case 'assistant':
               return <Markdown key={item.id} text={item.text} />;
             case 'thought':

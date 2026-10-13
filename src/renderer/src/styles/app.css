@@ -733,6 +733,22 @@ button.chip:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* a long message shows its first eight lines, fading out above Show more */
+.user-text.clip {
+  max-height: calc(1.7em * 8);
+  overflow: hidden;
+}
+.user-text.faded {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 3em), transparent);
+}
+.user-message .show-more {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.user-message .show-more:hover {
+  color: var(--text);
+}
 
 .markdown {
   line-height: 1.7;

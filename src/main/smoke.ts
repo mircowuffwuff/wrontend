@@ -171,6 +171,25 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await waitFor(`[...document.querySelectorAll('.transcript > .markdown')].some((m) => m.textContent.includes('quoted 1 line'))`);
     await shot('07-quote-sent');
   });
+  // a long message clips behind Show more, a short one does not
+  await step('07-long-message', async () => {
+    const paragraphs = Array.from({ length: 14 }, (_, i) => `echo paragraph ${i + 1} of a long message.`);
+    await type(paragraphs.join('\n\n'));
+    const last = `[...document.querySelectorAll('.user-message')].pop()`;
+    await waitFor(`${last}.textContent.includes('paragraph 14') && !document.querySelector('.send.stop')`);
+    const clipped = await js<{ more: string | null; hidden: boolean; short: number }>(`({
+      more: ${last}.querySelector('.show-more')?.textContent ?? null,
+      hidden: ${last}.querySelector('.user-text').scrollHeight > ${last}.querySelector('.user-text').clientHeight,
+      short: [...document.querySelectorAll('.user-message')].slice(0, -1).filter((m) => m.querySelector('.show-more')).length,
+    })`);
+    if (clipped.more !== 'Show more' || !clipped.hidden || clipped.short) throw new Error(`the long message reads ${JSON.stringify(clipped)}`);
+    await js(`${last}.scrollIntoView({ block: 'center' })`);
+    await shot('07-long-message');
+    await js(`${last}.querySelector('.show-more').click()`);
+    await waitFor(`${last}.querySelector('.show-more').textContent === 'Show less' && !${last}.querySelector('.user-text.clip')`);
+    await js(`${last}.querySelector('.show-more').scrollIntoView({ block: 'center' })`);
+    await shot('07-long-message-open');
+  });
   await step('07-mode-picker', async () => {
     const picker = `[...document.querySelectorAll('.under-row .picker')].find((b) => b.textContent.trim() === 'Default')`;
     await waitFor(`${picker}?.tagName === 'BUTTON'`);

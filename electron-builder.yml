@@ -17,9 +17,9 @@ files:
   - package.json
 # nothing native to rebuild
 npmRebuild: false
+# the icon is build/icon.ico, which scripts/render-icon.mjs renders from build/icon.svg. with neither there, the build takes
+# Electron's own
 win:
   target:
     - target: zip
       arch: x64
-  # rendered from build/icon.svg by scripts/render-icon.mjs
-  icon: build/icon.ico

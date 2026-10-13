@@ -41,16 +41,16 @@ code is unaffected: comments and script headers wrap to the column the file arou
 i like commits across the whole repo nice and streamlined. try and follow these roles:
 
 - **subjects are `<type>(<scope>): <subject>`**, Conventional Commits. types: `feat fix docs style aesthetics refactor perf test build ci chore revert`, plus **`diag`**, which is not standard. a `diag/` commit is never merged anywhere. scopes in the repo:
-  - `host` — AgentHost: starting, restarting and killing harness processes
+  - `host` — AgentHost and the session states above it: starting, restarting and killing harness processes, and each session's transcript and turn
   - `acp` — the ACP client side and harness profiles
   - `proxy` — the local HTTP proxy between the harnesses and Ollama
   - `ollama` — polling and managing Ollama
-  - `ipc` — the typed channel between main and renderer
+  - `ipc` — the typed channel between the main process and the renderer
   - `ui` — the renderer
-  - `settings` — the config file and the Settings screen
+  - `settings` — wrontend's settings file
   - `components` — the component engine: installing, versioning and resolving the parts wrontend downloads where they are first needed
-  - `browser` — the model browser: searching Hugging Face, a repo's quants and what fits on this machine
-  - `updater` — checking harnesses, Ollama and models for updates, and the panel that offers them
+  - `browser` — finding models: searching Hugging Face, a repo's quants and what fits on this machine
+  - `updater` — checking harnesses, Ollama and models for updates, and applying them
   - `build` — packaging and the installer
 
   a commit that touches the whole repo or more than one scope takes no scope. the list grows when a new part of the app earns one.

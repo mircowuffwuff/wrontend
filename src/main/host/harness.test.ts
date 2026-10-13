@@ -120,6 +120,11 @@ describe.skipIf(!on)('Claude Code against a fake model', () => {
     const first = new AgentHost(proxy, dataDir, () => program, (e) => events.push(e));
     const { info, modes } = await first.create({ harness: 'claude-code', folder, model: 'fake-model', effort: 'off' });
     expect(modes?.available.map((m) => m.id)).toContain('plan');
+    // the adapter sends its slash commands just after the session's creation returns; the host keeps them
+    const commands = () => first.stored().find((s) => s.info.id === info.id)?.commands ?? [];
+    for (let i = 0; i < 100 && commands().length === 0; i++) await new Promise((r) => setTimeout(r, 100));
+    console.log('commands:', JSON.stringify(commands().map((c) => [c.name, c.input?.hint ?? null])));
+    expect(commands().map((c) => c.name)).toContain('compact');
     await first.setMode(info.id, 'plan');
     await first.prompt(info.id, 'say hi');
     const end1 = await turnEnded(events, 0);
@@ -136,6 +141,7 @@ describe.skipIf(!on)('Claude Code against a fake model', () => {
     expect(stored[0].items).toHaveLength(1);
     expect(stored[0].harnessSessionId).not.toBeNull();
     expect(stored[0].info.mode).toBe('plan');
+    expect(stored[0].commands?.length).toBeGreaterThan(0);
     const before = log.length;
     await second.prompt(info.id, 'say hi again');
     const end2 = await turnEnded(events, mark);

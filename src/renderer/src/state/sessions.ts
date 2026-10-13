@@ -1,7 +1,7 @@
 // every session's transcript, turn state, pending permission and latest numbers -- and their copy on disk
 
 import { create } from 'zustand';
-import type { SessionMode } from '@agentclientprotocol/sdk';
+import type { AvailableCommand, SessionMode } from '@agentclientprotocol/sdk';
 import type { Effort, RequestStats } from '@shared/proxy';
 import type { CreateSessionOptions, PermissionRequest, SessionEvent, SessionInfo } from '@shared/session';
 import { bridge } from '../bridge';
@@ -18,6 +18,8 @@ export interface SessionView {
   usage: { used: number; size: number } | null;
   // what the harness offers; empty until its process has started
   modes: { current: string; available: SessionMode[] };
+  // the harness's slash commands; empty until it has reported them
+  commands: AvailableCommand[];
 }
 
 interface SessionsState {
@@ -42,7 +44,7 @@ interface SessionsState {
 }
 
 function view(info: SessionInfo, items: TranscriptItem[] = []): SessionView {
-  return { info, items, running: false, turnStartedAt: null, permissions: [], lastMain: null, usage: null, modes: { current: info.mode ?? '', available: [] } };
+  return { info, items, running: false, turnStartedAt: null, permissions: [], lastMain: null, usage: null, modes: { current: info.mode ?? '', available: [] }, commands: [] };
 }
 
 function patch(state: SessionsState, id: string, change: (s: SessionView) => Partial<SessionView>): Partial<SessionsState> {
@@ -73,7 +75,7 @@ export const useSessions = create<SessionsState>((set, get) => ({
     const stored = await bridge.invoke('session:stored');
     const sessions: Record<string, SessionView> = {};
     for (const s of stored) {
-      sessions[s.info.id] = { ...view(s.info, endTurn(s.items as TranscriptItem[])), modes: s.modes ?? { current: s.info.mode ?? '', available: [] } };
+      sessions[s.info.id] = { ...view(s.info, endTurn(s.items as TranscriptItem[])), modes: s.modes ?? { current: s.info.mode ?? '', available: [] }, commands: s.commands ?? [] };
     }
     set((state) => ({
       sessions: { ...sessions, ...state.sessions },
@@ -85,8 +87,8 @@ export const useSessions = create<SessionsState>((set, get) => ({
   async createAndPrompt(options, text) {
     set({ creating: true });
     try {
-      const { info, modes } = await bridge.invoke('session:create', options);
-      const created = { ...view(info), modes: modes ?? { current: '', available: [] } };
+      const { info, modes, commands } = await bridge.invoke('session:create', options);
+      const created = { ...view(info), modes: modes ?? { current: '', available: [] }, commands };
       set((s) => ({ sessions: { ...s.sessions, [info.id]: created }, order: [info.id, ...s.order], activeId: info.id, history: visit(s.history, s.activeId, info.id) }));
       await get().prompt(info.id, text);
     } catch (cause) {
@@ -179,6 +181,7 @@ function onEvent(event: SessionEvent): void {
         const u = event.update;
         if (u.sessionUpdate === 'usage_update') return patch(state, id, () => ({ usage: { used: u.used, size: u.size } }));
         if (u.sessionUpdate === 'current_mode_update') return patch(state, id, (v) => ({ modes: { ...v.modes, current: u.currentModeId } }));
+        if (u.sessionUpdate === 'available_commands_update') return patch(state, id, () => ({ commands: u.availableCommands }));
         return patch(state, id, (v) => ({ items: applyUpdate(v.items, u) }));
       }
       case 'turn-start':

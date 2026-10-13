@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import type { AvailableCommand } from '@agentclientprotocol/sdk';
 import type { BackgroundPolicy, Effort, RequestStats } from '@shared/proxy';
 import type { CreatedSession, CreateSessionOptions, SessionEvent, SessionInfo, SessionModes, StoredSession } from '@shared/session';
 import type { UsageSummary } from '@shared/usage';
@@ -17,6 +18,7 @@ interface Entry {
   info: SessionInfo;
   harnessSessionId: string | null;
   modes: SessionModes | null;
+  commands: AvailableCommand[];
   items: unknown[];
   agent: AgentSession | null;
   // a dormant session's process is starting; a second prompt waits for the same start
@@ -47,14 +49,14 @@ export class AgentHost {
       const folder = this.folders.get(stored.info.folderId);
       if (!folder) continue;
       const info = { ...stored.info, folder: folder.path };
-      this.sessions.set(info.id, { ...stored, info, modes: stored.modes ?? null, agent: null, starting: null });
+      this.sessions.set(info.id, { ...stored, info, modes: stored.modes ?? null, commands: stored.commands ?? [], agent: null, starting: null });
     }
   }
 
   stored(): StoredSession[] {
     return [...this.sessions.values()]
       .sort((a, b) => b.info.createdAt - a.info.createdAt)
-      .map(({ info, harnessSessionId, modes, items }) => ({ info, harnessSessionId, modes, items }));
+      .map(({ info, harnessSessionId, modes, commands, items }) => ({ info, harnessSessionId, modes, commands, items }));
   }
 
   async create(options: CreateSessionOptions): Promise<CreatedSession> {
@@ -70,11 +72,11 @@ export class AgentHost {
       title: 'New session',
       createdAt: Date.now(),
     };
-    const entry: Entry = { info, harnessSessionId: null, modes: null, items: [], agent: null, starting: null };
+    const entry: Entry = { info, harnessSessionId: null, modes: null, commands: [], items: [], agent: null, starting: null };
     this.sessions.set(info.id, entry);
     try {
       const agent = await this.wake(entry);
-      return { info, modes: agent.modes };
+      return { info, modes: agent.modes, commands: entry.commands };
     } catch (cause) {
       this.sessions.delete(info.id);
       throw cause;
@@ -193,6 +195,11 @@ export class AgentHost {
         if (event.type === 'update' && event.update.sessionUpdate === 'current_mode_update' && entry.modes) {
           entry.modes = { ...entry.modes, current: event.update.currentModeId };
         }
+        // a harness may send its commands before the session's creation returns, so they are kept here and come along
+        if (event.type === 'update' && event.update.sessionUpdate === 'available_commands_update') {
+          entry.commands = event.update.availableCommands;
+          this.persist(entry);
+        }
         this.emit(event);
       },
     });
@@ -215,7 +222,7 @@ export class AgentHost {
 
   private persist(entry: Entry): void {
     const { folder: _path, ...info } = entry.info;
-    this.store.save({ info, harnessSessionId: entry.harnessSessionId, modes: entry.modes, items: entry.items });
+    this.store.save({ info, harnessSessionId: entry.harnessSessionId, modes: entry.modes, commands: entry.commands, items: entry.items });
   }
 
   private recordUsage(entry: Entry, record: { type: 'prompt'; model: string } | { type: 'request'; stats: RequestStats }): void {

@@ -1,7 +1,8 @@
 // a scripted ACP agent for testing the app without a model: thinking, a plan, markdown, a read, an edit that needs permission.
 // a prompt containing "slow" streams thinking until it is cancelled, one containing "fail" ends the turn with an error,
 // one containing "echo" answers with how many quoted lines it carried, and one containing "several" writes and edits
-// several files in the session's folder
+// several files in the session's folder. it offers a few slash commands, and a prompt that starts with one is answered
+// with the command and its input
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -83,6 +84,15 @@ async function editFile(client: AgentContext, sessionId: string, folder: string,
   });
 }
 
+// sent just after the session's creation returns, as Claude Code's adapter sends them
+const COMMANDS = [
+  { name: 'compact', description: 'Summarise the conversation to free up context', input: { hint: 'what to keep' } },
+  { name: 'context', description: 'Show what fills the context window' },
+  { name: 'init', description: 'Write an AGENTS.md for this folder' },
+  { name: 'review', description: 'Review the changes on this branch', input: { hint: 'branch or pull request' } },
+  { name: 'mcp', description: 'Manage MCP servers' },
+];
+
 const ANSWER = `Done — the readme now says what wrontend is.
 
 - the first paragraph names it a **graphical frontend**
@@ -109,9 +119,10 @@ const app = agent({ name: 'wrontend-fake-agent' })
     agentCapabilities: { loadSession: false },
     agentInfo: { name: 'wrontend-fake-agent', version: '0.1.0' },
   }))
-  .onRequest('session/new', ({ params }) => {
+  .onRequest('session/new', ({ params, client }) => {
     const sessionId = `fake-${Date.now()}`;
     folders.set(sessionId, params.cwd);
+    setTimeout(() => void update(client, sessionId, { sessionUpdate: 'available_commands_update', availableCommands: COMMANDS }), 0);
     return {
       sessionId,
       modes: {
@@ -134,6 +145,14 @@ const app = agent({ name: 'wrontend-fake-agent' })
     const { sessionId } = params;
     const text = params.prompt.map((b) => (b.type === 'text' ? b.text : '')).join(' ');
     cancelled.delete(sessionId);
+
+    if (text.startsWith('/')) {
+      const [name, ...input] = text.slice(1).split(' ');
+      const known = COMMANDS.some((c) => c.name === name);
+      const said = input.join(' ').trim();
+      await stream(client, sessionId, 'agent_message_chunk', known ? `Ran /${name}${said ? ` with “${said}”` : ''}.` : `There is no /${name} command.`);
+      return { stopReason: 'end_turn' };
+    }
 
     if (text.includes('fail')) {
       await stream(client, sessionId, 'agent_thought_chunk', 'this one is meant to go wrong.');

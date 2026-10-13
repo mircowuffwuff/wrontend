@@ -1,6 +1,6 @@
 // what a session looks like from the renderer, and the events main sends about it
 
-import type { PermissionOption, SessionMode, SessionUpdate, StopReason, ToolCallUpdate } from '@agentclientprotocol/sdk';
+import type { AvailableCommand, PermissionOption, SessionMode, SessionUpdate, StopReason, ToolCallUpdate } from '@agentclientprotocol/sdk';
 import type { Effort, RequestStats } from './proxy';
 
 export interface SessionInfo {
@@ -23,6 +23,9 @@ export interface StoredSession {
   harnessSessionId: string | null;
   // the harness's modes as last reported, so a dormant session can show and offer them
   modes: SessionModes | null;
+  // the harness's slash commands as last reported, so a dormant session can offer them. absent from a record written
+  // before a harness reported any
+  commands?: AvailableCommand[];
   // the renderer's transcript items, kept opaque here; the renderer owns their shape
   items: unknown[];
 }
@@ -48,10 +51,12 @@ export interface SessionModes {
   available: SessionMode[];
 }
 
-// a new session as creation returns it: its modes come along, since the harness reports them before the renderer knows the session
+// a new session as creation returns it: its modes and any commands come along, since the harness may report them before
+// the renderer knows the session
 export interface CreatedSession {
   info: SessionInfo;
   modes: SessionModes | null;
+  commands: AvailableCommand[];
 }
 
 export interface CreateSessionOptions {

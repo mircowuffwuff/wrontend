@@ -27,9 +27,9 @@
   --font: 'DM Sans', system-ui, sans-serif;
   --mono: 'DM Mono', ui-monospace, monospace;
 
-  --top-bar: 44px;
-  --sidebar-width: 272px;
-  --transcript-width: 760px;
+  --top-bar: 36px;
+  --sidebar-width: 244px;
+  --transcript-width: 768px;
   --transcript-text: 14px;
 
   color-scheme: dark;

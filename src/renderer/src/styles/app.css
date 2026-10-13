@@ -67,6 +67,8 @@ button {
   background: var(--sidebar);
   border-right: 1px solid var(--line);
   min-height: 0;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .sidebar-top {
@@ -123,6 +125,10 @@ button {
   background: var(--field);
   color: var(--muted);
 }
+.sidebar .search {
+  margin: 8px 10px 8px;
+  height: 26px;
+}
 .search input {
   flex: 1;
   min-width: 0;
@@ -144,6 +150,9 @@ button {
   padding: 6px 10px;
   border-radius: var(--leaf-md);
   text-align: left;
+}
+.sidebar .nav-item {
+  padding: 3px 10px;
 }
 .nav-item:hover {
   background: var(--hover);
@@ -242,6 +251,10 @@ button {
   /* the native window buttons sit over the right edge */
   padding: 0 150px 0 18px;
   flex-shrink: 0;
+  font-size: 13px;
+}
+.top-bar .chip {
+  height: 22px;
 }
 
 .chip {
@@ -270,17 +283,28 @@ button.chip:hover {
   min-height: 0;
 }
 
+.content::-webkit-scrollbar,
+.sessions::-webkit-scrollbar {
+  width: 6px;
+}
+.content::-webkit-scrollbar-thumb,
+.sessions::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--muted);
+}
+
 .column {
-  width: min(var(--transcript-width), calc(100% - 48px));
+  width: min(var(--transcript-width), calc(100% - 80px));
   margin: 0 auto;
 }
 
 .greeting {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 72px;
-  font-size: 26px;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 20px;
+  line-height: 1.3;
   font-weight: 500;
 }
 
@@ -288,15 +312,15 @@ button.chip:hover {
 
 .stats-card {
   max-width: 480px;
-  margin: 28px 0 24px;
-  padding: 10px 12px 12px;
+  margin: 48px 12px 24px;
+  padding: 8px 12px 12px;
   border-radius: var(--leaf-md);
   background: var(--sidebar);
 }
 .stats-head {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 18px;
 }
 .stats-tabs {
   display: inline-flex;
@@ -332,8 +356,12 @@ button.chip:hover {
   color: var(--muted);
   font-size: 11.5px;
 }
+.stats-card .stat-label {
+  line-height: 16px;
+}
 .stat-value {
   font-size: 13px;
+  line-height: 19px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -350,7 +378,7 @@ button.chip:hover {
   grid-template-columns: repeat(26, minmax(0, 1fr));
   grid-auto-flow: column;
   gap: 3px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .heat-cell {
   aspect-ratio: 1;
@@ -422,7 +450,7 @@ button.chip:hover {
 
 .composer {
   flex-shrink: 0;
-  padding: 8px 0 14px;
+  padding: 8px 0 8px;
 }
 
 .chips-row {
@@ -457,7 +485,7 @@ button.chip:hover {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 12px 12px 12px 18px;
+  padding: 6px 12px;
   border: 1px solid var(--line);
   border-radius: var(--leaf-lg);
   background: var(--field);
@@ -470,6 +498,7 @@ button.chip:hover {
   min-height: 24px;
   max-height: 240px;
   resize: none;
+  padding: 0;
   background: none;
   border: 0;
   outline: 0;
@@ -485,8 +514,8 @@ button.chip:hover {
 .send {
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--leaf-sm);
   background: var(--accent);
   color: var(--on-accent);
@@ -501,13 +530,17 @@ button.chip:hover {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
+  margin-top: 2px;
   padding: 0 4px;
   font-size: 13px;
   color: var(--muted);
 }
 .under-row .spacer {
   flex: 1;
+}
+.under-row .icon-button,
+.under-row .picker {
+  height: 24px;
 }
 
 .picker {
@@ -719,7 +752,7 @@ button.chip:hover {
 }
 .session-row {
   width: calc(100% - 16px);
-  font-size: 14px;
+  font-size: 13px;
 }
 .session-row .name {
   flex: 1;
@@ -806,15 +839,16 @@ button.chip:hover {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 24px 0 32px;
+  padding: 52px 4px 32px 15px;
   font-size: var(--transcript-text);
   user-select: text;
 }
 
 .user-message {
   align-self: flex-end;
-  max-width: 82%;
-  padding: 10px 16px;
+  max-width: 84%;
+  margin-bottom: 20px;
+  padding: 8px 12px;
   border-radius: var(--bubble);
   background: var(--raised);
   white-space: pre-wrap;
@@ -822,7 +856,7 @@ button.chip:hover {
 }
 /* a long message shows its first eight lines, fading out above Show more */
 .user-text.clip {
-  max-height: calc(1.7em * 8);
+  max-height: calc(1.5em * 8);
   overflow: hidden;
 }
 .user-text.faded {
@@ -838,7 +872,7 @@ button.chip:hover {
 }
 
 .markdown {
-  line-height: 1.7;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .markdown > :first-child {
@@ -846,6 +880,15 @@ button.chip:hover {
 }
 .markdown > :last-child {
   margin-bottom: 0;
+}
+.markdown li + li {
+  margin-top: 3px;
+}
+.markdown blockquote {
+  margin: 16px 4px;
+  padding-left: 14px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
 }
 .markdown h1,
 .markdown h2,
@@ -856,8 +899,8 @@ button.chip:hover {
 }
 .markdown code {
   font-family: var(--mono);
-  font-size: 13px;
-  padding: 1px 6px;
+  font-size: 12px;
+  padding: 1px 4px;
   border-radius: var(--leaf-sm);
   background: var(--raised);
   color: var(--mustard);
@@ -872,11 +915,12 @@ button.chip:hover {
 }
 .markdown table {
   border-collapse: collapse;
+  width: 100%;
 }
 .markdown th,
 .markdown td {
   border: 1px solid var(--line);
-  padding: 4px 10px;
+  padding: 6px 10px;
 }
 
 .code-block {
@@ -885,12 +929,14 @@ button.chip:hover {
   border: 1px solid var(--line);
   border-radius: var(--leaf-md);
   background: var(--field);
+  width: fit-content;
+  max-width: 100%;
 }
 .code-block pre {
   margin: 0;
-  padding: 12px 14px;
+  padding: 8px 48px 8px 12px;
   overflow-x: auto;
-  font: 13px/1.6 var(--mono);
+  font: 12px/1.4 var(--mono);
 }
 .code-block .copy {
   position: absolute;
@@ -1475,7 +1521,7 @@ kbd {
   z-index: 50;
   display: grid;
   place-items: start center;
-  padding: calc(var(--top-bar) + 8px) 40px 16px;
+  padding: 52px 40px 16px;
   background: rgb(0 0 0 / 0.38);
 }
 .settings {
@@ -2029,7 +2075,7 @@ a.button {
 }
 .slash-menu .menu {
   position: relative;
-  width: 300px;
+  width: 240px;
   max-height: 420px;
 }
 /* the last visible row fades while more are below it */
@@ -2037,7 +2083,8 @@ a.button {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
 }
 .slash-menu .menu-item {
-  font-size: 14px;
+  padding: 2px 6px;
+  font-size: 13px;
 }
 /* only the active row is lit: the keys move it as well as the pointer */
 .slash-menu .menu-item:hover {
@@ -2053,13 +2100,13 @@ a.button {
   position: absolute;
   left: calc(100% + 6px);
   width: max-content;
-  max-width: 360px;
-  padding: 6px 12px;
+  max-width: 420px;
+  padding: 4px 8px;
   border-radius: var(--leaf-sm);
   background: var(--text);
   color: var(--bg);
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.3;
   pointer-events: none;
 }
 /* what the textarea's placeholder would say after a lone slash, which a placeholder cannot. the row's items sit on its

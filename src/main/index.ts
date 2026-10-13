@@ -35,7 +35,7 @@ const CHROME = {
   dark: { background: '#161c14', symbols: '#ece6cf' },
   light: { background: '#f0f2ea', symbols: '#1f2a17' },
 };
-const TOP_BAR_HEIGHT = 44;
+const TOP_BAR_HEIGHT = 36;
 
 let win: BrowserWindow | null = null;
 let host: AgentHost | null = null;

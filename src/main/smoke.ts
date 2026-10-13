@@ -84,11 +84,16 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
   });
   await step('02-permission-docked', async () => {
     await waitFor(`document.querySelector('.permission .button.primary')`);
+    // the transcript ends in Needs your input, with no Working line beside it, and the session's mark asks too
+    await waitFor(`document.querySelector('.needs-input-tag')?.textContent === 'Needs your input'`);
+    if (await js<boolean>(`!!document.querySelector('.working')`)) throw new Error('the Working line shows beside Needs your input');
+    if (!(await js<boolean>(`!!document.querySelector('.session-row .row-mark.asking')`))) throw new Error('the session row does not show it is asking');
     await shot('02-permission-docked');
   });
   await step('03-allow-and-finish', async () => {
     await js(`document.querySelector('.permission .button.primary').click()`);
     await waitFor(`!document.querySelector('.permission') && !document.querySelector('.send.stop') && document.querySelector('.markdown code')`);
+    if (await js<boolean>(`!!document.querySelector('.needs-input')`)) throw new Error('Needs your input stays after the request is answered');
     await shot('03-allow-and-finish');
   });
   await step('04-tools-expanded', async () => {

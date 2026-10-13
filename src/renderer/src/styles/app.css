@@ -710,7 +710,7 @@ button.chip:hover {
   color: var(--accent);
 }
 .row-mark.asking {
-  color: var(--mustard);
+  color: var(--remove);
 }
 
 /* transcript */
@@ -1057,6 +1057,20 @@ button.chip:hover {
   gap: 8px;
 }
 
+.needs-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.needs-input-tag {
+  padding: 1px 9px;
+  border-radius: var(--leaf-sm);
+  background: color-mix(in srgb, var(--remove) 20%, transparent);
+  color: var(--remove);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .content {
   position: relative;
 }
@@ -1157,6 +1171,17 @@ kbd {
   }
   50% {
     transform: rotate(14deg);
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
   }
 }
 @media (prefers-reduced-motion: reduce) {

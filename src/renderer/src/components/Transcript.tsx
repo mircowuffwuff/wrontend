@@ -110,6 +110,9 @@ export function Transcript({ session }: { session: SessionView }) {
     if (el && atBottom) el.scrollTop = el.scrollHeight;
   });
 
+  // a permission request waits docked above the prompt box, and the transcript ends in a marker that says so
+  const asking = session.permissions.length > 0;
+
   const onScroll = () => {
     const el = scroller.current;
     if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
@@ -151,7 +154,12 @@ export function Transcript({ session }: { session: SessionView }) {
               );
           }
         })}
-        {session.running && session.turnStartedAt !== null && lastBlock?.kind !== 'tools' && (
+        {asking ? (
+          <div className="needs-input">
+            <Leaf size={9} color="var(--remove)" style={{ animation: 'pulse 1.4s ease-in-out infinite' }} />
+            <span className="needs-input-tag">Needs your input</span>
+          </div>
+        ) : session.running && session.turnStartedAt !== null && lastBlock?.kind !== 'tools' && (
           <div className="working muted">
             <Leaf size={9} style={{ animation: 'sway 1.6s ease-in-out infinite' }} />
             Working… {duration(now - session.turnStartedAt)}

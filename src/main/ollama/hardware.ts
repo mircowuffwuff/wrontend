@@ -1,4 +1,4 @@
-// what the model browser's fit labels are measured against: the GPU memory Ollama can use, the RAM, and the context length
+// what a quant's fit on this machine is measured against: the GPU memory Ollama can use, the RAM, and the context length
 // Ollama loads models with. Ollama's API says none of it; its server log does, in the lines it writes as it starts
 
 import { execFile } from 'node:child_process';

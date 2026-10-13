@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionUpdate } from '@agentclientprotocol/sdk';
-import { addEdits, addUser, applyUpdate, group, type TranscriptItem } from './transcript';
+import type { TranscriptItem } from '@shared/session';
+import { addEdits, addUser, applyUpdate, firstChange } from './transcript';
 
 const text = (t: string) => ({ type: 'text' as const, text: t });
 
@@ -9,7 +10,7 @@ function run(updates: SessionUpdate[]): TranscriptItem[] {
 }
 
 describe('applyUpdate', () => {
-  it('merges chunks, closes a thought when text follows, and groups tool calls', () => {
+  it('merges chunks, closes a thought when text follows, and keeps each tool call by its id', () => {
     const items = run([
       { sessionUpdate: 'agent_thought_chunk', content: text('let me ') },
       { sessionUpdate: 'agent_thought_chunk', content: text('think') },
@@ -24,13 +25,7 @@ describe('applyUpdate', () => {
     expect(items[1]).toMatchObject({ text: 'let me think', startedAt: 1000, endedAt: 1002 });
     expect(items[2]).toMatchObject({ text: 'Sure, reading it.' });
     expect(items[3]).toMatchObject({ id: 'a', status: 'completed' });
-    expect(group(items).map((b) => (b.kind === 'tools' ? `tools:${b.tools.length}` : b.item.kind))).toEqual([
-      'user',
-      'thought',
-      'assistant',
-      'tools:2',
-      'assistant',
-    ]);
+    expect(items[4]).toMatchObject({ id: 'b', status: 'pending' });
   });
 
   it('keeps one plan and updates it in place', () => {
@@ -43,18 +38,6 @@ describe('applyUpdate', () => {
     expect(plans).toHaveLength(1);
     expect(plans[0]).toMatchObject({ entries: [{ status: 'completed' }] });
   });
-});
-
-describe('addEdits', () => {
-  const file = { path: 'a.ts', hunks: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }], whole: true };
-
-  it('ends the turn in a card of its files, and adds none for a turn that changed nothing', () => {
-    const items = run([{ sessionUpdate: 'agent_message_chunk', content: text('Done.') }]);
-    expect(addEdits(items, [])).toBe(items);
-    const ended = addEdits(items, [file]);
-    expect(ended.map((i) => i.kind)).toEqual(['user', 'assistant', 'edits']);
-    expect(group(ended).map((b) => (b.kind === 'tools' ? 'tools' : b.item.kind))).toEqual(['user', 'assistant', 'edits']);
-  });
 
   it('keeps the locations a tool call reports', () => {
     const items = run([
@@ -62,5 +45,41 @@ describe('addEdits', () => {
       { sessionUpdate: 'tool_call_update', toolCallId: 'a', status: 'completed', locations: [{ path: 'a.ts', line: 12 }] },
     ]);
     expect(items[1]).toMatchObject({ locations: [{ path: 'a.ts', line: 12 }] });
+  });
+
+  it('returns the same transcript for an update it does not show', () => {
+    const items = run([]);
+    expect(applyUpdate(items, { sessionUpdate: 'usage_update', used: 1, size: 2 })).toBe(items);
+  });
+
+  it('gives items ids no other transcript has', () => {
+    const [a, b] = [run([]), run([])];
+    expect(a[0].id).not.toBe(b[0].id);
+  });
+});
+
+describe('addEdits', () => {
+  const file = { path: 'a.ts', hunks: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }], whole: true };
+
+  it('ends the turn in its changed files, and adds nothing for a turn that changed none', () => {
+    const items = run([{ sessionUpdate: 'agent_message_chunk', content: text('Done.') }]);
+    expect(addEdits(items, [])).toBe(items);
+    expect(addEdits(items, [file]).map((i) => i.kind)).toEqual(['user', 'assistant', 'edits']);
+  });
+});
+
+describe('firstChange', () => {
+  it('finds the first item a change replaced, and the end for one that only added', () => {
+    const items = run([
+      { sessionUpdate: 'agent_message_chunk', content: text('a') },
+      { sessionUpdate: 'tool_call', toolCallId: 't', title: 'Run it', kind: 'execute', status: 'pending' },
+      { sessionUpdate: 'agent_message_chunk', content: text('b') },
+    ]);
+    const updated = applyUpdate(items, { sessionUpdate: 'tool_call_update', toolCallId: 't', status: 'completed' });
+    expect(firstChange(items, updated)).toBe(2);
+    const streamed = applyUpdate(items, { sessionUpdate: 'agent_message_chunk', content: text('c') });
+    expect(firstChange(items, streamed)).toBe(3);
+    const added = addUser(items, 'next');
+    expect(firstChange(items, added)).toBe(4);
   });
 });

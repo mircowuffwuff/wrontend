@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { before, countHunks, editedFile, hunksOf, placeDiffs, type PlacedDiff } from './diffs';
+import { before, countContent, countHunks, diffRows, editedFile, hunksOf, placeDiffs, type PlacedDiff } from './diffs';
 
 const lines = (from: number, to: number, change: Record<number, string> = {}) =>
   Array.from({ length: to - from + 1 }, (_, i) => change[from + i] ?? `line ${from + i}`).join('\n');
@@ -84,5 +84,33 @@ describe('hunksOf', () => {
     const hunks = hunksOf(lines(1, 12), lines(1, 12, { 10: 'ten' }), 40, 41);
     expect(hunks).toHaveLength(1);
     expect(hunks[0]).toMatchObject({ oldStart: 46, newStart: 47 });
+  });
+});
+
+describe('diffRows', () => {
+  it('numbers each line in its own file and folds the unchanged lines above and between the hunks', () => {
+    const hunks = hunksOf(file(), file({ 6: 'six', 16: 'sixteen' }));
+    const rows = diffRows(hunks);
+    expect(rows.filter((r) => r.type === 'fold')).toEqual([
+      { type: 'fold', lines: 2 },
+      { type: 'fold', lines: 3 },
+    ]);
+    expect(rows.filter((r) => r.type !== 'fold' && r.type !== 'same')).toEqual([
+      { type: 'remove', text: 'line 6', no: 6 },
+      { type: 'add', text: 'six', no: 6 },
+      { type: 'remove', text: 'line 16', no: 16 },
+      { type: 'add', text: 'sixteen', no: 16 },
+    ]);
+    expect(rows[1]).toEqual({ type: 'same', text: 'line 3', no: 3 });
+  });
+});
+
+describe('countContent', () => {
+  it('counts the lines a tool call’s diffs add and remove, and nothing for its other content', () => {
+    const counts = countContent([
+      { type: 'diff', path: 'a.ts', oldText: 'a\nb', newText: 'a\nc\nd' },
+      { type: 'content', content: { type: 'text', text: 'done' } },
+    ]);
+    expect(counts).toEqual({ added: 2, removed: 1 });
   });
 });

@@ -26,7 +26,7 @@ export const claudeCode: HarnessProfile = {
   name: 'Claude Code',
   component: 'claude-code',
   launch({ proxyUrl, harnessHome, program }) {
-    if (!program) throw new Error('Claude Code is not set up. Pick it from the harness chip on a new session to set it up.');
+    if (!program) throw new Error('Claude Code is not set up. Picking it for a new session sets it up.');
     // the adapter runs on Electron's own Node, whichever npm installed it, so the runtime is the same on every machine
     const base = onOwnNode(program);
     return {

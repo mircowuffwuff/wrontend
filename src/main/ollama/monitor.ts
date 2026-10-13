@@ -11,7 +11,7 @@ export class OllamaMonitor {
   constructor(
     private readonly client: OllamaClient,
     private readonly onChange: (status: OllamaStatus) => void,
-    // the name a loaded model is shown under: wrontend's copy of a model is shown as the model the user picked
+    // the name a loaded model is reported under: wrontend's copy of a model is reported as the model the user picked
     private readonly shownAs: (name: string) => string = (name) => name,
     private readonly intervalMs = 3000,
   ) {

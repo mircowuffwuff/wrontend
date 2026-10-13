@@ -137,7 +137,7 @@ export class DerivedModels implements Driver {
     }
     const found = await analysis;
     if (found.kind !== 'derive') return found;
-    if (!this.options.enabled()) return { kind: 'lost', reason: `${LOST}. Copies with a renderer are turned off in Settings.` };
+    if (!this.options.enabled()) return { kind: 'lost', reason: `${LOST}. wrontend's copies with a renderer are turned off in its settings.` };
     const { renderer, parser } = found;
     return { kind: 'derive', name: derivedName(original), renderer, parser, version: `${model.digest.slice(0, 12)}+${renderer}+${parser}` };
   }
@@ -191,7 +191,7 @@ export class DerivedModels implements Driver {
     await this.list();
   }
 
-  // what the model picker says about a model
+  // what wrontend does about a model's earlier reasoning
   async reasoning(engine: ComponentEngine, original: string): Promise<ModelReasoning> {
     const plan = await this.plan(original);
     if (plan.kind === 'kept') return { status: 'kept' };
@@ -227,7 +227,7 @@ export class DerivedModels implements Driver {
 
 // the model a request for the user's pick goes to: its copy with a renderer where wrontend makes one, else the pick itself. a
 // copy still being made is waited for, since it takes seconds and the turn would lose its reasoning without it. a copy that
-// failed is tried again only on retry -- a pick in the picker -- and not by every request
+// failed is tried again only on retry -- the user picking the model -- and not by every request
 export async function routeModel(engine: ComponentEngine, derived: DerivedModels, original: string, retry = false): Promise<string> {
   const plan = await derived.plan(original);
   if (plan.kind !== 'derive') return original;
@@ -243,7 +243,7 @@ export async function routeModel(engine: ComponentEngine, derived: DerivedModels
 }
 
 // deletes a model from Ollama with wrontend's copy of it. the copy goes first: a failure halfway then leaves an original whose
-// copy is made again on its next pick, never a copy whose original is gone, which the picker would not list
+// copy is made again on its next pick, never a copy whose original is gone, which the model list would leave out
 export async function deleteModel(engine: ComponentEngine, derived: DerivedModels, ollama: DeletingOllama, name: string): Promise<void> {
   if (derived.readOnly) throw new Error('This run deletes nothing from Ollama.');
   if (engine.state(derivedId(name)).status === 'installing') throw new Error(`A copy of ${name} is being made. Try again when it is done.`);

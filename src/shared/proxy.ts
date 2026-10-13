@@ -31,3 +31,8 @@ export interface RequestStats {
   historyHasThinking: boolean;
   error: string | null;
 }
+
+// the reply's generation speed: output tokens over the time from the first token to the last. null where it was not measured
+export function tokensPerSecond(stats: RequestStats): number | null {
+  return stats.outputTokens && stats.generationMs ? (stats.outputTokens * 1000) / stats.generationMs : null;
+}

@@ -1,5 +1,5 @@
-// the model browser's stand-ins for the smoke test: a Hugging Face answered from memory, a pull that reports progress and
-// downloads nothing, and a fixed machine, so the screenshots never depend on the network or on the hardware they run on
+// the smoke test's stand-ins for finding and pulling models: a Hugging Face answered from memory, a pull that reports
+// progress and downloads nothing, and a fixed machine, so the test never depends on the network or on the hardware it runs on
 
 import type { Hardware, RepoSummary } from '@shared/models';
 import type { PullProgress } from '../ollama/client';
@@ -43,7 +43,7 @@ export const fakeSource: ModelSource = {
 
 export const fakeHardware: Hardware = { gpuBytes: 15.2 * 2 ** 30, ramBytes: 32 * 2 ** 30, contextLength: 65536, source: 'ollama' };
 
-// four seconds of a download that gets halfway, then the refusal a failed pull shows
+// four seconds of a download that gets halfway, then the refusal a failed pull ends in
 export const fakePulling: PullingOllama = {
   async pull(_name, onProgress: (progress: PullProgress) => void, signal) {
     const total = 12 * GB;

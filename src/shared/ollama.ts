@@ -1,4 +1,4 @@
-// what main knows about Ollama, in the shape the renderer receives it
+// what the main process knows about Ollama and the models in it
 
 import type { ComponentState } from './components';
 
@@ -49,7 +49,15 @@ export type ModelReasoning =
   // reason says why wrontend cannot keep it
   | { status: 'lost'; reason: string };
 
-// a model as the model picker lists it
+// a model in Ollama, with what wrontend does about its reasoning. wrontend's own copies are not listed: a pick of the
+// original is routed to its copy
 export interface ModelEntry extends ModelSummary {
   reasoning: ModelReasoning;
+}
+
+// what a restart of Ollama cuts off: the sessions whose turn is running, and the models downloading. a download goes on
+// from where it stopped when it is started again
+export interface RestartImpact {
+  sessions: { id: string; title: string }[];
+  downloads: string[];
 }

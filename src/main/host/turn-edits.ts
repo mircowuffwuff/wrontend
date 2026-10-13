@@ -7,7 +7,7 @@ import type { SessionUpdate, ToolCallContent, ToolCallLocation, ToolCallStatus }
 import { editedFile, placeDiffs, type PlacedDiff } from '@shared/diffs';
 import type { EditedFile } from '@shared/session';
 
-// a larger file is not read back; its card shows each edit's own diff
+// a larger file is not read back; it gets each edit's own diff instead
 const MAX_READ = 2 * 1024 * 1024;
 
 interface Call {

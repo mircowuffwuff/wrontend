@@ -11,13 +11,26 @@
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { StoredSession } from '@shared/session';
+import type { AvailableCommand } from '@agentclientprotocol/sdk';
+import type { SessionInfo, SessionModes, TranscriptItem } from '@shared/session';
 import type { SessionUsage, UsageRecord } from '@shared/usage';
 
 export interface FolderRecord {
   id: string;
   path: string;
   createdAt: number;
+}
+
+// a session as it is kept: what it is, the harness's own id to reopen it with, and wrontend's copy of the transcript
+export interface StoredSession {
+  info: SessionInfo;
+  harnessSessionId: string | null;
+  // the harness's modes as last reported, so a dormant session can offer them
+  modes: SessionModes | null;
+  // the harness's slash commands as last reported, so a dormant session can offer them. absent from a record written
+  // before a harness reported any
+  commands?: AvailableCommand[];
+  items: TranscriptItem[];
 }
 
 // a session as it is written: its project folder only by id, the path coming from the folder's record when it is read
@@ -135,7 +148,7 @@ function directories(dir: string): string[] {
 }
 
 // a record that is missing or does not parse reads as nothing; it is never deleted, since it may be repairable by hand
-function readJson<T>(file: string): T | null {
+export function readJson<T>(file: string): T | null {
   try {
     return JSON.parse(readFileSync(file, 'utf8')) as T;
   } catch {
@@ -143,7 +156,7 @@ function readJson<T>(file: string): T | null {
   }
 }
 
-function writeWhole(file: string, value: unknown): void {
+export function writeWhole(file: string, value: unknown): void {
   const temp = `${file}.tmp`;
   writeFileSync(temp, JSON.stringify(value));
   renameSync(temp, file);

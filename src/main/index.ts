@@ -2,6 +2,8 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
 import type { ComponentState, HarnessEntry } from '@shared/components';
+import type { RestartImpact } from '@shared/ollama';
+import type { SessionDefaults } from '@shared/session';
 import type { Settings } from '@shared/settings';
 import { CATALOG } from './components/catalog';
 import { deleteModel, DerivedModels, routeModel } from './components/derived';
@@ -12,7 +14,9 @@ import { ModelPulls, pulledName, pullId } from './components/pull';
 import { RENDERERS } from './components/renderers';
 import { ComponentStore } from './components/store';
 import { AgentHost } from './host/agent-host';
+import { DefaultsStore } from './host/defaults';
 import { PROFILES } from './host/profiles';
+import { SessionStates } from './host/session-states';
 import { handle, send } from './ipc';
 import { fakeHardware, fakeInstalled, fakeManifests, fakePulling, fakeSource } from './models/fake-source';
 import { HuggingFace, repoDetails, type ModelSource } from './models/huggingface';
@@ -30,20 +34,15 @@ import { Updater } from './updates/updater';
 import { usePortableData } from './portable';
 import { prepareSmoke, runSmoke, smokeFolder } from './smoke';
 
-// the window's own colours before the renderer has painted, and behind the native window buttons
-const CHROME = {
-  dark: { background: '#161c14', symbols: '#ece6cf' },
-  light: { background: '#f0f2ea', symbols: '#1f2a17' },
-};
-const TOP_BAR_HEIGHT = 36;
-
 let win: BrowserWindow | null = null;
 let host: AgentHost | null = null;
+let states: SessionStates | null = null;
 const smoke = smokeFolder();
 if (smoke) prepareSmoke();
 else usePortableData();
 
 const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'), applySettings);
+const defaults = new DefaultsStore(join(app.getPath('userData'), 'defaults.json'));
 const ollama = new OllamaClient(ollamaAddress(settings.value));
 let wasReachable = false;
 const monitor = new OllamaMonitor(ollama, (status) => {
@@ -88,7 +87,7 @@ const npm = new NpmDriver(
     : {},
 );
 const derived = new DerivedModels(ollama, componentStore, RENDERERS, { enabled: () => settings.value.models.derive, readOnly: !!smoke });
-// the model browser reads Hugging Face and pulls into Ollama; the smoke test does neither, and measures a fixed machine
+// models are found on Hugging Face and pulled into Ollama; the smoke test does neither, and measures a fixed machine
 const modelSource: ModelSource = smoke ? fakeSource : new HuggingFace();
 const pulls = new ModelPulls(smoke ? fakePulling : ollama, (name) => derived.has(name));
 // the downloads under way and the ones that failed, for a window that opens or reloads meanwhile
@@ -140,10 +139,48 @@ function harnesses(): HarnessEntry[] {
     .map((p) => ({ id: p.id, name: p.name, state: p.component ? harnessState(p.component) : { status: 'installed', version: null } }));
 }
 
-// an update under way, or one that failed, shows in the updater: the harness stays usable at the version it has
+// an update under way, or one that failed, is the updater's to report: the harness stays usable at the version it has
 function harnessState(component: string): ComponentState {
   const installed = npm.state(component);
   return installed.status === 'installed' ? installed : components.state(component);
+}
+
+// installing is activating: a harness that is not set up is set up the first time it is picked, and tried again when its
+// setup failed. a failure arrives as the harness's state, with npm's output
+function installHarness(id: string): Promise<void> {
+  const component = PROFILES[id]?.component;
+  if (!component) throw new Error(`${id} has nothing to set up`);
+  return components.install(component).then(
+    () => {},
+    () => {},
+  );
+}
+
+// a model is picked: its copy with a renderer, where it needs one, is made now rather than on its first request, and a copy
+// that failed is tried again
+function prepareModel(name: string): void {
+  void routeModel(components, derived, name, true).catch(() => {});
+}
+
+function setDefaults(patch: Partial<SessionDefaults>): SessionDefaults {
+  const before = defaults.value;
+  const value = defaults.update(patch);
+  if (value.model && value.model !== before.model) prepareModel(value.model);
+  if (value.harness && value.harness !== before.harness) {
+    const status = harnesses().find((h) => h.id === value.harness)?.state.status;
+    if (status === 'missing' || status === 'failed') void installHarness(value.harness);
+  }
+  send(win, 'session:defaults-changed', value);
+  return value;
+}
+
+// a restart cuts off every reply being written and every download. with Ollama not running there is nothing to cut off
+function restartImpact(): RestartImpact {
+  if (!monitor.status.reachable) return { sessions: [], downloads: [] };
+  return {
+    sessions: sessions().running().map((s) => ({ id: s.info.id, title: s.info.title })),
+    downloads: [...pullStates].filter(([, state]) => state.status === 'installing').map(([name]) => name),
+  };
 }
 
 function ollamaAddress(value: Settings): string {
@@ -151,10 +188,10 @@ function ollamaAddress(value: Settings): string {
 }
 
 function applySettings(value: Settings): void {
-  // the renderer's prefers-color-scheme follows this too, and so do the native window buttons
+  // the page's prefers-color-scheme follows this, and so do the native parts of the window
   nativeTheme.themeSource = value.appearance.theme;
   host?.setBackgroundPolicy(value.proxy.backgroundPolicy);
-  // the picker's notes on reasoning follow the copies being turned on or off
+  // what the model list says about reasoning follows copies being turned on or off
   send(win, 'ollama:models-changed', undefined);
   const address = ollamaAddress(value);
   if (address !== ollama.baseUrl) {
@@ -164,26 +201,16 @@ function applySettings(value: Settings): void {
   send(win, 'settings:changed', value);
 }
 
-function chrome() {
-  return nativeTheme.shouldUseDarkColors ? CHROME.dark : CHROME.light;
-}
-
 function createWindow(): void {
-  const colours = chrome();
   win = new BrowserWindow({
     width: 1320,
     height: 860,
-    minWidth: 900,
-    minHeight: 560,
     show: false,
-    backgroundColor: colours.background,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: colours.background, symbolColor: colours.symbols, height: TOP_BAR_HEIGHT },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       sandbox: true,
-      // the smoke test's window is never shown, and a throttled hidden window paints late
+      // the smoke test's window is never shown, and a throttled hidden window runs its timers late
       backgroundThrottling: !smoke,
     },
   });
@@ -193,7 +220,7 @@ function createWindow(): void {
   });
   win.on('closed', () => (win = null));
 
-  // links in the transcript open in the user's browser, never inside the app
+  // links open in the user's browser, never inside the app
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
@@ -202,7 +229,7 @@ function createWindow(): void {
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
 
-  if (smoke) win.webContents.once('did-finish-load', () => void runSmoke(win!, smoke, () => host?.disposeAll()));
+  if (smoke) win.webContents.once('did-finish-load', () => void runSmoke(win!, smoke, { states: sessions(), stopHarnesses: () => host?.disposeAll() }));
 
   const capture = process.env.WRONTEND_CAPTURE;
   if (capture) captureOnce(win, capture);
@@ -225,27 +252,26 @@ function captureOnce(target: BrowserWindow, file: string): void {
   });
 }
 
+// WRONTEND_AUTOPROMPT=<folder>|<model>|<prompt> starts one session as the app starts -- for exercising a real turn without a
+// UI. WRONTEND_HARNESS picks its harness, Claude Code unless set
+async function autoprompt(): Promise<void> {
+  const [folder, model, ...text] = (process.env.WRONTEND_AUTOPROMPT ?? '').split('|');
+  if (!folder || !model || text.length === 0) return;
+  const harness = process.env.WRONTEND_HARNESS ?? 'claude-code';
+  try {
+    const session = await sessions().create({ harness, folder, model, effort: defaults.value.effort });
+    await sessions().prompt(session.info.id, text.join('|'));
+  } catch (cause) {
+    console.error(`wrontend: the autoprompt could not start: ${(cause as Error).message}`);
+  }
+}
+
 function registerHandlers(): void {
-  handle('window:minimize', () => win?.minimize());
-  handle('window:toggle-maximize', () => {
-    if (win?.isMaximized()) win.unmaximize();
-    else win?.maximize();
-  });
   handle('dialog:pick-folder', async () => {
     const result = win
       ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
       : await dialog.showOpenDialog({ properties: ['openDirectory'] });
     return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  // WRONTEND_AUTOPROMPT=<folder>|<model>|<prompt> starts one session as the app opens -- for exercising a real turn without clicking.
-  // WRONTEND_HARNESS picks its harness, Claude Code unless set
-  handle('app:autoprompt', () => {
-    // once per run: a reloaded window must not start the session again
-    const value = process.env.WRONTEND_AUTOPROMPT ?? '';
-    delete process.env.WRONTEND_AUTOPROMPT;
-    const [folder, model, ...text] = value.split('|');
-    const harness = process.env.WRONTEND_HARNESS ?? 'claude-code';
-    return folder && model && text.length ? { harness, folder, model, text: text.join('|') } : null;
   });
   handle('app:about', () => ({
     version: app.getVersion(),
@@ -278,9 +304,6 @@ function registerHandlers(): void {
       models.map(async (m) => ({ ...m, reasoning: await derived.reasoning(components, m.name).catch(() => ({ status: 'kept' as const })) })),
     );
   });
-  handle('ollama:prepare', async (name) => {
-    await routeModel(components, derived, name, true);
-  });
   handle('ollama:show', async (name) => {
     try {
       return await ollama.show(name);
@@ -293,6 +316,8 @@ function registerHandlers(): void {
     if (working.length > 0) throw new Error(`${name} is in use by ${working.map((t) => `“${t}”`).join(', ')}.`);
     try {
       await deleteModel(components, derived, ollama, name);
+      // a new session no longer starts with a model that is gone
+      if (defaults.value.model === name) setDefaults({ model: null });
     } finally {
       send(win, 'ollama:models-changed', undefined);
       void monitor.poll();
@@ -318,14 +343,10 @@ function registerHandlers(): void {
   handle('ollama:default-address', () => resolveBaseUrl(process.env.OLLAMA_HOST));
   handle('ollama:server', () => ollamaServer.state());
   handle('ollama:set-server', (changes) => ollamaServer.set(changes));
+  handle('ollama:restart-impact', () => restartImpact());
   handle('ollama:restart', () => restartOllama(() => ollamaServer.restart()));
   handle('harness:list', () => harnesses());
-  handle('harness:install', async (id) => {
-    const component = PROFILES[id]?.component;
-    if (!component) throw new Error(`${id} has nothing to set up`);
-    // a failure reaches the renderer as the harness's state, with npm's output
-    await components.install(component).catch(() => {});
-  });
+  handle('harness:install', (id) => installHarness(id));
   handle('updates:state', () => updater.state());
   handle('updates:check', () => {
     void updater.check();
@@ -338,18 +359,26 @@ function registerHandlers(): void {
   });
   handle('updates:skip', (id) => updater.skip(id));
   handle('updates:pin', (id, pinned) => updater.pin(id, pinned));
-  handle('session:stored', () => sessions().stored());
-  handle('session:create', (options) => sessions().create(options));
-  handle('session:save-items', (id, items) => sessions().saveItems(id, items));
+  handle('session:list', () => sessions().list());
+  handle('session:defaults', () => defaults.value);
+  handle('session:set-defaults', (patch) => setDefaults(patch));
+  handle('session:create', async (options) => {
+    const session = await sessions().create(options);
+    setDefaults({ harness: options.harness, model: options.model, effort: options.effort });
+    return session;
+  });
   handle('session:rename', (id, title) => sessions().rename(id, title));
   handle('session:delete', (id) => sessions().delete(id));
-  handle('session:prompt', (id, text) => sessions().prompt(id, text));
+  handle('session:prompt', (id, text, quotes) => sessions().prompt(id, text, quotes));
   handle('session:cancel', (id) => sessions().cancel(id));
   handle('session:answer', (id, requestId, optionId) => sessions().answer(id, requestId, optionId));
-  handle('session:set-model', (id, model) => sessions().setModel(id, model));
+  handle('session:set-model', (id, model) => {
+    sessions().setModel(id, model);
+    prepareModel(model);
+  });
   handle('session:set-effort', (id, effort) => sessions().setEffort(id, effort));
   handle('session:set-mode', (id, modeId) => sessions().setMode(id, modeId));
-  handle('stats:summary', () => sessions().usageSummary());
+  handle('stats:summary', () => host!.usageSummary());
 }
 
 // any restart may have installed a waiting Ollama update, so the updater looks again once Ollama is back
@@ -364,27 +393,21 @@ async function restartOllama(restart: () => Promise<void>): Promise<void> {
   }
 }
 
-function sessions(): AgentHost {
-  if (!host) throw new Error('the agent host is not ready');
-  return host;
+function sessions(): SessionStates {
+  if (!states) throw new Error('the sessions are not ready');
+  return states;
 }
-
-nativeTheme.on('updated', () => {
-  const colours = chrome();
-  win?.setBackgroundColor(colours.background);
-  if (process.platform === 'win32' || process.platform === 'linux') {
-    win?.setTitleBarOverlay({ color: colours.background, symbolColor: colours.symbols, height: TOP_BAR_HEIGHT });
-  }
-});
 
 app.whenReady().then(async () => {
   registerHandlers();
   await proxy.start();
   nativeTheme.themeSource = settings.value.appearance.theme;
-  host = new AgentHost(proxy, app.getPath('userData'), (component) => npm.program(component), (event) => send(win, 'session:event', event), settings.value.proxy.backgroundPolicy);
+  host = new AgentHost(proxy, app.getPath('userData'), (component) => npm.program(component), (event) => states?.apply(event), settings.value.proxy.backgroundPolicy);
+  states = new SessionStates(host, (change) => send(win, 'session:changed', change));
   monitor.start();
   updater.start();
   createWindow();
+  void autoprompt();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

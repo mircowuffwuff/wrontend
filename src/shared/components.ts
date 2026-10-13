@@ -1,4 +1,4 @@
-// the parts wrontend installs where the user first needs them, as the renderer sees them
+// the parts wrontend installs where they are first needed, and the state each is in
 
 export type ComponentState =
   | { status: 'missing' }

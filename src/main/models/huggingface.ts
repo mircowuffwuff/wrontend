@@ -1,4 +1,4 @@
-// the model browser's source: GGUF repos on Hugging Face, through its public API. Ollama's library has no search API, and
+// where models are found: GGUF repos on Hugging Face, through its public API. Ollama's library has no search API, and
 // Hugging Face's also gives each file's sha256, which is the digest Ollama stores for a pulled blob -- what the updater compares
 
 import type { Fit, Hardware, Quant, RepoDetails, RepoSummary } from '@shared/models';
@@ -11,7 +11,7 @@ export interface RepoFile {
   sha256: string | null;
 }
 
-// where the browser reads repos and their files; the smoke test answers from memory
+// where repos and their files are read; the smoke test answers from memory
 export interface ModelSource {
   search(query: string): Promise<RepoSummary[]>;
   files(repo: string): Promise<RepoFile[]>;

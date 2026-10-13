@@ -1,8 +1,8 @@
-// what the updater found out of date, as the renderer sees it
+// what the updater found out of date
 
 import type { ComponentState } from './components';
 
-// the panel's groups, in the order it shows them
+// the kinds of thing the updater checks, in the order it lists them
 export const UPDATE_GROUPS = ['harnesses', 'ollama', 'models'] as const;
 export type UpdateGroup = (typeof UPDATE_GROUPS)[number];
 
@@ -16,7 +16,7 @@ export interface UpdateEntry {
   available: string;
   // what the update downloads, where that is known before it starts
   bytes?: number;
-  // the user keeps it as it is: shown muted, left out of Update All, and the icon does not count it
+  // the user keeps it as it is: still listed, but left out of Update All and of outdated()
   pinned: boolean;
   // while it updates, and when the update failed
   state: ComponentState | null;
@@ -31,7 +31,7 @@ export interface UpdatesState {
   failures: { group: UpdateGroup; error: string }[];
 }
 
-// what colours the sidebar's icon
+// what is out of date and wanted: everything not pinned
 export function outdated(state: UpdatesState): UpdateEntry[] {
   return state.entries.filter((e) => !e.pinned);
 }

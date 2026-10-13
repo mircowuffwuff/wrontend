@@ -16,7 +16,7 @@ export interface SessionUsage {
   records: UsageRecord[];
 }
 
-// what the new-session stats card shows, summed up in main from every session's usage log
+// every session's usage summed up in the main process, deleted sessions' included
 export const STATS_RANGES = ['all', '30d', '7d'] as const;
 export type StatsRange = (typeof STATS_RANGES)[number];
 

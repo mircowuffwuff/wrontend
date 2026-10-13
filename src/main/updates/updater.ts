@@ -1,6 +1,6 @@
 // the updater: asks each source what is out of date -- on launch, every few hours and when asked -- and sets an update up
 // through the component engine, as a first install would. nothing updates by itself.
-// the sources are independent: one that cannot be reached leaves the others' rows standing, and says why in the panel.
+// the sources are independent: one that cannot be reached leaves the others' entries standing, and its failure says why.
 // the user's choices -- a skipped version, a pinned component -- are kept in a file of their own: they are not settings
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -95,7 +95,7 @@ export class Updater {
     return this.running;
   }
 
-  // the row goes once the update is set up; a failure stays on it, from the engine's report or the source's own
+  // the entry goes once the update is set up; a failure stays on it, from the engine's report or the source's own
   async update(id: string): Promise<void> {
     const [group, found] = this.lookup(id);
     const source = this.sources.find((s) => s.group === group);
@@ -116,7 +116,7 @@ export class Updater {
     this.changed();
   }
 
-  // every row not pinned and not already updating. Ollama's restart waits for the others: it would cut off the model
+  // every entry not pinned and not already updating. Ollama's restart waits for the others: it would cut off the model
   // downloads started beside it
   async updateAll(): Promise<void> {
     const entries = this.state().entries.filter((e) => !e.pinned && e.state?.status !== 'installing');
@@ -137,7 +137,7 @@ export class Updater {
     this.save();
   }
 
-  // the engine's report on any component; only the ones the updater lists show on a row
+  // the engine's report on any component; only the ones the updater lists carry it on their entry
   componentChanged(component: string, state: ComponentState): void {
     if (state.status === 'installing' || state.status === 'failed') this.progress.set(component, state);
     else if (!this.progress.delete(component)) return;

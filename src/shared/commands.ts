@@ -1,4 +1,4 @@
-// the slash menu's logic: what the prompt's text asks for, and which of the harness's commands match it
+// the harness's slash commands as a prompt types them: what the prompt's text asks for, and which commands match it
 
 import type { AvailableCommand } from '@agentclientprotocol/sdk';
 
@@ -29,7 +29,8 @@ export function matchCommands(commands: AvailableCommand[], query: string): Comm
   return tiers.flat();
 }
 
-// the prompt's text once a command is picked: its name and a space, ready for its input
+// the prompt's text once a command is picked: its name and a space, ready for its input. the harness takes /name input
+// as plain prompt text
 export function pickedText(command: AvailableCommand): string {
   return `/${command.name} `;
 }

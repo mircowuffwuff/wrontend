@@ -1,4 +1,4 @@
-// the only door between the renderer and main: typed invoke and event channels, nothing else
+// the only door between the renderer and the main process: typed invoke and event channels, nothing else
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { EventChannel, EventMap, WrontendBridge } from '@shared/ipc';

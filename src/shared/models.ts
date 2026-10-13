@@ -1,4 +1,4 @@
-// the model browser's view of Hugging Face, and what fits on this machine
+// GGUF models on Hugging Face as wrontend finds them, what fits on this machine, and their downloads into Ollama
 
 import type { ComponentState } from './components';
 
@@ -48,9 +48,15 @@ export interface RepoDetails {
   quants: Quant[];
   // the projector that comes with every pull of a vision model, counted in each quant's fit
   projectorBytes: number;
-  // the largest quant that fits fully on the GPU, preselected
+  // the largest quant short of full precision that fits fully on the GPU, else the smallest one that fits
   recommended: string | null;
   hardware: Hardware | null;
+}
+
+// what a quant's download comes to. Ollama announces each layer only as it starts on it, so the projector's size arrives
+// once the weights are done; the repo's file sizes say the whole from the start
+export function pullSize(state: ComponentState & { status: 'installing' }, quant: Quant, projectorBytes: number): number {
+  return Math.max(state.total ?? 0, quant.sizeBytes + projectorBytes, state.bytes, 1);
 }
 
 export interface Hardware {

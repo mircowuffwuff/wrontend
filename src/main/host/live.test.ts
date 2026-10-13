@@ -6,12 +6,12 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RequestStats } from '@shared/proxy';
-import type { SessionEvent } from '@shared/session';
 import { installedProgram } from '../components/testing';
 import { resolveBaseUrl } from '../ollama/client';
 import { ProxyServer } from '../proxy/server';
 import { tempFolder } from '../temp-folder';
 import { AgentHost } from './agent-host';
+import type { SessionEvent } from './session';
 
 const live = process.env.WRONTEND_LIVE === '1';
 const model = process.env.WRONTEND_MODEL;
@@ -58,7 +58,7 @@ describe.skipIf(!live)('Claude Code end to end', () => {
           }
         }, 200);
       });
-      host.prompt(info.id, 'Create a file named hello.txt containing exactly the word canopy. Then say done.');
+      host.prompt(info.id, 'Create a file named hello.txt containing exactly the word hello. Then say done.');
       const end = await ended;
 
       const kinds = new Map<string, number>();

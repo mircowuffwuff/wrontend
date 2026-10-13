@@ -1,5 +1,6 @@
 // a stand-in for npm that answers view and install without a network: for the engine's tests and the smoke test.
-// install writes a package with the requested name and version and an empty program; slowly, when asked, so progress shows
+// install writes a package with the requested name and version and an empty program; slowly, when asked, so its progress
+// can be followed
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

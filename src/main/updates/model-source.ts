@@ -62,7 +62,7 @@ export function modelUpdates(ollama: InstalledModels, read: ManifestReader = rea
   return {
     group: 'models',
     async check() {
-      // with Ollama not running there is nothing to compare, and the sidebar already says so
+      // with Ollama not running there is nothing to compare, and Ollama's status already says so
       const models = (await ollama.models().catch(() => [])).filter((m) => !isDerived(m.name));
       const found = await Promise.all(
         models.map(async (model): Promise<Found | null> => {

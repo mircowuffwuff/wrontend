@@ -6,9 +6,6 @@ import { BACKGROUND_POLICIES, type BackgroundPolicy } from './proxy';
 export const CHOICES = {
   appearance: {
     theme: ['system', 'light', 'dark'],
-    textSize: ['small', 'medium', 'large'],
-    width: ['narrow', 'medium', 'wide'],
-    motion: ['system', 'reduced'],
   },
   proxy: {
     backgroundPolicy: BACKGROUND_POLICIES,
@@ -19,10 +16,8 @@ type Choice<S extends keyof typeof CHOICES, K extends keyof (typeof CHOICES)[S]>
 
 export interface Settings {
   appearance: {
+    // the main process applies it to the whole app: the page's prefers-color-scheme and the native parts of the window follow
     theme: Choice<'appearance', 'theme'>;
-    textSize: Choice<'appearance', 'textSize'>;
-    width: Choice<'appearance', 'width'>;
-    motion: Choice<'appearance', 'motion'>;
   };
   ollama: {
     // where wrontend finds Ollama; empty means OLLAMA_HOST, or Ollama's own default
@@ -38,7 +33,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  appearance: { theme: 'system', textSize: 'medium', width: 'medium', motion: 'system' },
+  appearance: { theme: 'system' },
   ollama: { address: '' },
   models: { derive: true },
   proxy: { backgroundPolicy: 'local-titles' },

@@ -14,7 +14,7 @@ function record(id: string, folderId: string, createdAt = 1): SessionRecord {
     info: { id, harness: 'fake', folderId, model: 'm', effort: 'on', title: 'A session', createdAt },
     harnessSessionId: null,
     modes: null,
-    items: [{ kind: 'user', text: 'hello' }],
+    items: [{ kind: 'user', id: 'u-1', text: 'hello' }],
   };
 }
 

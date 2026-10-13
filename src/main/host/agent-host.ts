@@ -6,20 +6,28 @@ import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AvailableCommand } from '@agentclientprotocol/sdk';
 import type { BackgroundPolicy, Effort, RequestStats } from '@shared/proxy';
-import type { CreatedSession, CreateSessionOptions, SessionEvent, SessionInfo, SessionModes, StoredSession } from '@shared/session';
+import type { CreateSessionOptions, SessionInfo, SessionModes, TranscriptItem } from '@shared/session';
 import type { UsageSummary } from '@shared/usage';
 import type { ProxyServer } from '../proxy/server';
 import { PROFILES } from './profiles';
-import { AgentSession } from './session';
-import { FolderStore, SessionStore } from './store';
+import { AgentSession, type SessionEvent } from './session';
+import { FolderStore, SessionStore, type StoredSession } from './store';
 import { summarize } from './usage-summary';
+
+// a new session as creation returns it: its modes and any commands come along, since the harness may report them before
+// creation returns
+export interface CreatedSession {
+  info: SessionInfo;
+  modes: SessionModes | null;
+  commands: AvailableCommand[];
+}
 
 interface Entry {
   info: SessionInfo;
   harnessSessionId: string | null;
   modes: SessionModes | null;
   commands: AvailableCommand[];
-  items: unknown[];
+  items: TranscriptItem[];
   agent: AgentSession | null;
   // a dormant session's process is starting; a second prompt waits for the same start
   starting: Promise<AgentSession> | null;
@@ -57,6 +65,11 @@ export class AgentHost {
     return [...this.sessions.values()]
       .sort((a, b) => b.info.createdAt - a.info.createdAt)
       .map(({ info, harnessSessionId, modes, commands, items }) => ({ info, harnessSessionId, modes, commands, items }));
+  }
+
+  // the session's record as it stands, a copy
+  info(id: string): SessionInfo {
+    return { ...this.get(id).info };
   }
 
   async create(options: CreateSessionOptions): Promise<CreatedSession> {
@@ -146,8 +159,8 @@ export class AgentHost {
     this.persist(entry);
   }
 
-  // the renderer owns the transcript's shape; main only keeps it
-  saveItems(id: string, items: unknown[]): void {
+  // the transcript is built by the session states above the host, and kept here with the rest of the session
+  saveItems(id: string, items: TranscriptItem[]): void {
     const entry = this.sessions.get(id);
     if (!entry) return;
     entry.items = items;

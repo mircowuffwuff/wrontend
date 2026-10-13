@@ -1,6 +1,6 @@
-// sums every session's usage log up into what the new-session stats card shows. a message is a prompt the user sent or a
-// reply the model sent -- every main request answered without an error, each step of a tool loop included. days and hours
-// are local time, as the person reading the card lives them; a range of 30 days is today and the 29 days before it
+// sums every session's usage log up, over all time and over the last 30 and 7 days. a message is a prompt the user sent or
+// a reply the model sent -- every main request answered without an error, each step of a tool loop included. days and hours
+// are local time, as the user lives them; a range of 30 days is today and the 29 days before it
 
 import type { ModelUsage, RangeUsage, SessionUsage, StatsRange, UsageRecord, UsageSummary } from '@shared/usage';
 

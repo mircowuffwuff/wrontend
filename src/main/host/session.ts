@@ -10,16 +10,32 @@ import {
   PROTOCOL_VERSION,
   type ClientConnection,
   type RequestPermissionResponse,
+  type SessionMode,
   type SessionModeState,
+  type SessionUpdate,
   type StopReason,
 } from '@agentclientprotocol/sdk';
-import type { RouteSettings } from '@shared/proxy';
-import type { PermissionRequest, SessionEvent, SessionModes } from '@shared/session';
+import type { RequestStats, RouteSettings } from '@shared/proxy';
+import type { EditedFile, PermissionRequest, SessionModes } from '@shared/session';
 import type { RouteHandle } from '../proxy/server';
 import type { HarnessProfile } from './profiles';
 import { TurnEdits } from './turn-edits';
 
 const STDERR_KEEP = 40;
+
+// what happens in a session as it happens: the harness's own updates and requests, its turns and its process, and the
+// proxy's measure of each of its requests
+export type SessionEvent =
+  | { sessionId: string; type: 'update'; update: SessionUpdate }
+  | { sessionId: string; type: 'permission'; request: PermissionRequest }
+  | { sessionId: string; type: 'permission-closed'; requestId: string }
+  | { sessionId: string; type: 'turn-start' }
+  // edits lists the files the turn's completed tool calls changed
+  | { sessionId: string; type: 'turn-end'; stopReason: StopReason | 'error'; error?: string; edits: EditedFile[] }
+  | { sessionId: string; type: 'stats'; stats: RequestStats }
+  | { sessionId: string; type: 'exit'; code: number | null; detail: string }
+  | { sessionId: string; type: 'notice'; text: string }
+  | { sessionId: string; type: 'modes'; current: string; available: SessionMode[] };
 
 export interface AgentSessionOptions {
   id: string;
@@ -108,7 +124,7 @@ export class AgentSession {
       clientInfo: { name: 'wrontend', version: '0.1.0' },
     });
 
-    // resume reopens a session without replaying it -- wrontend already shows its own copy of the transcript
+    // resume reopens a session without replaying it -- wrontend keeps its own copy of the transcript
     if (resumeId && init.agentCapabilities?.sessionCapabilities?.resume) {
       try {
         const resumed = await agent.request('session/resume', { sessionId: resumeId, cwd: this.o.folder, mcpServers: [] });

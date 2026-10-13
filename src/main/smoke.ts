@@ -1,12 +1,26 @@
-// the headless smoke test: drives the real window, hidden, through a scripted session with the fake agent.
-// started with --smoke=<folder>; every step leaves a screenshot there, and report.json says what passed
+// the smoke test: drives the real app, its window hidden, through a scripted session with the fake agent and through every
+// part of the main process a UI reaches -- all of it over the same IPC door a UI uses, from inside the page. started with
+// --smoke=<folder>; report.json there says what passed
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { app, nativeTheme, type BrowserWindow } from 'electron';
+import type { HarnessEntry } from '@shared/components';
+import { countHunks, diffRows } from '@shared/diffs';
+import { pullSize, type PullEntry, type RepoDetails, type RepoSummary } from '@shared/models';
+import type { ModelEntry, OllamaStatus, RestartImpact } from '@shared/ollama';
+import { applySessionChange, contextUse, type SessionChange, type SessionDefaults, type SessionState, type TranscriptItem } from '@shared/session';
+import type { OllamaServerState } from '@shared/settings';
+import type { UpdatesState } from '@shared/updates';
+import type { UsageSummary } from '@shared/usage';
+import type { ProxyServer } from './proxy/server';
+import { AgentHost } from './host/agent-host';
+import { SessionStates } from './host/session-states';
+
+const TITLE = 'Please make the readme say what wrontend is.';
 
 export function smokeFolder(): string | null {
   const arg = process.argv.find((a) => a.startsWith('--smoke='));
@@ -21,7 +35,7 @@ export function prepareSmoke(): void {
   removeAfterExit([data, project]);
   app.setPath('userData', data);
   process.env.WRONTEND_HARNESS = 'fake';
-  process.env.WRONTEND_AUTOPROMPT = `${project}|smoke-model|Please make the readme say what wrontend is.`;
+  process.env.WRONTEND_AUTOPROMPT = `${project}|smoke-model|${TITLE}`;
 }
 
 interface Step {
@@ -31,7 +45,15 @@ interface Step {
   error?: string;
 }
 
-export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: () => void): Promise<void> {
+// what a page keeps of the main process's events, from the moment the smoke test subscribes it
+interface Heard {
+  sessions: SessionChange[];
+  defaults: SessionDefaults[];
+  harnesses: HarnessEntry[];
+  updates: UpdatesState[];
+}
+
+export async function runSmoke(win: BrowserWindow, out: string, o: { states: SessionStates; stopHarnesses: () => void }): Promise<void> {
   mkdirSync(out, { recursive: true });
   const steps: Step[] = [];
   // parts of a step this machine cannot exercise, said in the report rather than passed in silence
@@ -42,47 +64,21 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
   });
 
   const js = <T = unknown>(code: string): Promise<T> => win.webContents.executeJavaScript(code, true) as Promise<T>;
-  const waitFor = async (condition: string, timeoutMs = 15000) => {
-    const until = Date.now() + timeoutMs;
-    while (Date.now() < until) {
-      if (await js<boolean>(`!!(${condition})`)) return;
+  // a channel called as a UI calls it, through the preload's bridge
+  const invoke = <T = unknown>(channel: string, ...args: unknown[]): Promise<T> =>
+    js<T>(`window.wrontend.invoke(${[channel, ...args].map((a) => JSON.stringify(a ?? null)).join(', ')})`);
+  // the message a refused call rejects with, as a UI receives it
+  const refusal = (channel: string, ...args: unknown[]): Promise<string | null> =>
+    js<string | null>(`window.wrontend.invoke(${[channel, ...args].map((a) => JSON.stringify(a ?? null)).join(', ')}).then(() => null, (e) => e.message)`);
+  const heard = () => js<Heard>('window.heard');
+  const until = async (what: string, check: () => Promise<boolean>, timeoutMs = 15_000) => {
+    const end = Date.now() + timeoutMs;
+    while (Date.now() < end) {
+      if (await check()) return;
       await new Promise((r) => setTimeout(r, 100));
     }
-    throw new Error(`timed out waiting for ${condition}`);
+    throw new Error(`timed out waiting for ${what}`);
   };
-  const shot = async (name: string) => {
-    // a hidden window paints only when asked: force a frame, and let it land, before reading it back
-    win.webContents.invalidate();
-    await js(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))`);
-    await new Promise((r) => setTimeout(r, 150));
-    const image = await win.webContents.capturePage();
-    await writeFile(join(out, `${name}.png`), image.toPNG());
-  };
-  // sets the prompt box the way typing does, so React sees the change, then presses Enter
-  const type = (text: string) =>
-    js(`(() => {
-      const box = document.querySelector('.prompt-box textarea');
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
-      box.dispatchEvent(new Event('input', { bubbles: true }));
-      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    })()`);
-  // sets the prompt box without sending it, and presses a key in it
-  const fill = (text: string) =>
-    js(`(() => {
-      const box = document.querySelector('.prompt-box textarea');
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
-      box.dispatchEvent(new Event('input', { bubbles: true }));
-    })()`);
-  const press = (key: string) => js(`document.querySelector('.prompt-box textarea').dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`);
-  // sets the title being renamed the way typing does, and presses a key in it
-  const setTitle = (text: string) =>
-    js(`(() => {
-      const field = document.querySelector('.title-field');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, ${JSON.stringify(text)});
-      field.dispatchEvent(new Event('input', { bubbles: true }));
-    })()`);
-  const titleKey = (key: string) => js(`document.querySelector('.title-field').dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`);
-  const slashRows = () => js<string[]>(`[...document.querySelectorAll('.slash-menu .menu-item')].map((b) => b.textContent)`);
   const step = async (name: string, run: () => Promise<void>) => {
     const started = Date.now();
     try {
@@ -90,636 +86,307 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
       steps.push({ name, ok: true, ms: Date.now() - started });
     } catch (cause) {
       steps.push({ name, ok: false, ms: Date.now() - started, error: (cause as Error).message });
-      await shot(`${name}-failed`).catch(() => {});
     }
   };
 
+  // the page listens before it reads the list, as a mirror must: a change that arrives in between is applied on top of the
+  // list, and applying one twice changes nothing
+  await js(`(() => {
+    window.heard = { sessions: [], defaults: [], harnesses: [], updates: [] };
+    window.wrontend.on('session:changed', (c) => window.heard.sessions.push(c));
+    window.wrontend.on('session:defaults-changed', (d) => window.heard.defaults.push(d));
+    window.wrontend.on('harness:changed', (h) => window.heard.harnesses.push(h));
+    window.wrontend.on('updates:changed', (u) => window.heard.updates.push(u));
+  })()`);
+  const listed = await invoke<SessionState[]>('session:list');
+
+  let id = '';
+  const list = () => invoke<SessionState[]>('session:list');
+  const state = async (of = id) => (await list()).find((s) => s.info.id === of) ?? fail('no session', of);
+  const last = async () => (await state()).items.at(-1);
+  const ended = (what: string) => until(what, async () => (await state()).turnStartedAt === null);
+  const text = (items: TranscriptItem[], kind: 'assistant' | 'user') => items.filter((i) => i.kind === kind).map((i) => (i.kind === kind ? i.text : ''));
+
   await step('01-session-starts', async () => {
-    await waitFor(`document.querySelector('.session-row')`);
-    await waitFor(`document.querySelector('.thought')`);
-    await shot('01-session-starts');
+    await until('the autoprompt session', async () => (await list()).length === 1);
+    id = (await list())[0].info.id;
+    await until('its thinking', async () => (await state()).items.some((i) => i.kind === 'thought'));
+    const s = await state();
+    if (s.info.title !== TITLE || s.info.harness !== 'fake' || s.turnStartedAt === null) fail('the new session', s.info);
+    if (s.modes?.available.map((m) => m.id).join() !== 'default,plan') fail('its modes', s.modes);
   });
-  await step('02-permission-docked', async () => {
-    await waitFor(`document.querySelector('.permission .button.primary')`);
-    // the transcript ends in Needs your input, with no Working line beside it, and the session's mark asks too
-    await waitFor(`document.querySelector('.needs-input-tag')?.textContent === 'Needs your input'`);
-    if (await js<boolean>(`!!document.querySelector('.working')`)) throw new Error('the Working line shows beside Needs your input');
-    if (!(await js<boolean>(`!!document.querySelector('.session-row .row-mark.asking')`))) throw new Error('the session row does not show it is asking');
-    await shot('02-permission-docked');
+  await step('02-permission', async () => {
+    await until('a permission request', async () => (await state()).permissions.length === 1);
+    const request = (await state()).permissions[0];
+    const allow = request.options.find((o) => o.kind === 'allow_once') ?? fail('no allow_once option', request.options);
+    await invoke('session:answer', id, request.requestId, allow.optionId);
+    await until('the request to close', async () => (await state()).permissions.length === 0);
   });
-  await step('03-allow-and-finish', async () => {
-    await js(`document.querySelector('.permission .button.primary').click()`);
-    await waitFor(`!document.querySelector('.permission') && !document.querySelector('.send.stop') && document.querySelector('.markdown code')`);
-    if (await js<boolean>(`!!document.querySelector('.needs-input')`)) throw new Error('Needs your input stays after the request is answered');
-    await shot('03-allow-and-finish');
+  await step('03-turn-ends', async () => {
+    await ended('the first turn');
+    const s = await state();
+    const kinds = s.items.map((i) => i.kind).join();
+    if (kinds !== 'user,thought,plan,tool,tool,assistant,edits') fail('the transcript', kinds);
+    const plan = s.items.find((i) => i.kind === 'plan');
+    if (plan?.kind !== 'plan' || plan.entries.some((e) => e.status !== 'completed')) fail('the plan', plan);
+    const thought = s.items.find((i) => i.kind === 'thought');
+    if (thought?.kind !== 'thought' || thought.endedAt === null) fail('the thought did not end', thought);
+    if (!text(s.items, 'assistant')[0].includes('```ts')) fail('the answer', text(s.items, 'assistant'));
+    // the readme the fake agent edits is not on disk, so its diff is the edit's own
+    const edits = s.items.at(-1);
+    if (edits?.kind !== 'edits' || edits.files.length !== 1 || edits.files[0].path !== 'readme.md' || edits.files[0].whole) fail('the edited files', edits);
+    const used = contextUse(s, []);
+    if (used.used !== 21000 || used.size !== 65536) fail('the context', used);
   });
-  await step('04-tools-expanded', async () => {
-    await js(`document.querySelectorAll('.tool-group > .tool-summary').forEach((b) => b.click())`);
-    await waitFor(`document.querySelectorAll('.tool-head').length >= 2`);
-    await js(`document.querySelectorAll('.tool-head').forEach((b) => b.click())`);
-    await waitFor(`document.querySelector('.diff-line.add')`);
-    await js(`document.querySelector('.diff')?.scrollIntoView({ block: 'center' })`);
-    await shot('04-tools-expanded');
-  });
-  // the card that ends a turn which changed files: the first turn's one file, then five, with a failed edit left out and
-  // the file edited three times shown as one diff with its real line numbers
+  // five files with a failed edit left out, the file edited three times as one diff from before the turn with its real
+  // line numbers
   await step('04-edited-files', async () => {
-    const card = `[...document.querySelectorAll('.edited-files')].pop()`;
-    const names = `[...${card}.querySelectorAll('.edited-file .name')].map((n) => n.textContent).join(',')`;
-    if ((await js<string>(names)) !== 'readme.md') throw new Error(`the first turn's card lists ${await js<string>(names)}`);
-    await type('edit several files');
-    await waitFor(`document.querySelectorAll('.edited-files').length === 2 && !document.querySelector('.send.stop')`);
-    const head = await js<string>(`${card}.querySelector('.edited-head').textContent`);
-    if (head !== 'Edited 5 files+10-5') throw new Error(`the card's header reads ${head}`);
-    const summary = await js<string>(`[...document.querySelectorAll('.tool-group > .tool-summary')].pop().textContent`);
-    if (summary !== 'Edited 5 files+10-5') throw new Error(`the tool group's summary reads ${summary}`);
-    if ((await js<string>(names)) !== 'app.ts,view.ts,usage.md') throw new Error(`the card's first rows are ${await js<string>(names)}`);
-    await shot('04-edited-files');
-    await js(`${card}.querySelector('.edited-row.more').click()`);
-    await waitFor(`${card}.querySelectorAll('.edited-file').length === 5 && ${card}.querySelector('.edited-row.more').textContent === 'Show less'`);
-    if ((await js<string>(names)).includes('package-lock')) throw new Error('the failed edit is on the card');
-    await js(`${card}.querySelector('.edited-file .edited-row').click()`);
-    await waitFor(`${card}.querySelector('.edited-diffs .diff')`);
-    const diff = await js<{ diffs: number; folds: string[]; first: string }>(`({
-      diffs: ${card}.querySelectorAll('.edited-diffs .diff').length,
-      folds: [...${card}.querySelectorAll('.edited-diffs .diff-fold')].map((f) => f.textContent),
-      first: ${card}.querySelector('.edited-diffs .diff-line.remove .no').textContent,
-    })`);
-    if (diff.diffs !== 1 || diff.folds.join() !== '5 unmodified lines' || diff.first !== '4') throw new Error(`app.ts opens as ${JSON.stringify(diff)}`);
-    await js(`document.querySelector('.content').scrollTop = document.querySelector('.content').scrollHeight`);
-    await shot('04-edited-files-open');
-    await js(`${card}.querySelector('.edited-row.more').click()`);
-    await waitFor(`${card}.querySelectorAll('.edited-file').length === 3`);
+    // a prompt is in the transcript and its turn running by the time the call returns, so a turn's end is simply waited for
+    await invoke('session:prompt', id, 'edit several files');
+    await ended('the edits');
+    const edits = await last();
+    if (edits?.kind !== 'edits') fail('the turn ended in', edits);
+    const names = edits.files.map((f) => basename(f.path)).join();
+    if (names !== 'app.ts,view.ts,usage.md,log.ts,package.json') fail('the files', names);
+    const counts = countHunks(edits.files.flatMap((f) => f.hunks));
+    if (counts.added !== 10 || counts.removed !== 5) fail('the line counts', counts);
+    const app = edits.files[0];
+    const rows = diffRows(app.hunks);
+    const folds = rows.filter((r) => r.type === 'fold');
+    const firstRemoved = rows.find((r) => r.type === 'remove');
+    if (!app.whole || folds.length !== 1 || folds[0].lines !== 5 || firstRemoved?.type !== 'remove' || firstRemoved.no !== 4) fail('app.ts', { whole: app.whole, rows });
   });
-  await step('05-running-then-stopped', async () => {
-    await type('slow please');
-    await waitFor(`document.querySelector('.send.stop')`);
-    await new Promise((r) => setTimeout(r, 1500));
-    await shot('05-running');
-    await js(`document.querySelector('.send.stop').click()`);
-    await waitFor(`!document.querySelector('.send.stop') && [...document.querySelectorAll('.notice')].some((n) => n.textContent === 'Stopped')`);
-    await shot('05-stopped');
+  await step('05-stopped', async () => {
+    await invoke('session:prompt', id, 'slow please');
+    await until('the slow thinking', async () => (await state()).items.at(-1)?.kind === 'thought');
+    if ((await refusal('session:prompt', id, 'and another')) !== 'A turn is already running in this session.') fail('a second prompt mid-turn', 'was taken');
+    await invoke('session:cancel', id);
+    await ended('the stop');
+    const notice = await last();
+    if (notice?.kind !== 'notice' || notice.text !== 'Stopped') fail('the turn ended in', notice);
   });
-  await step('06-error-shown', async () => {
-    await type('now fail');
-    await waitFor(`document.querySelector('.error-block')`);
-    await js(`document.querySelector('.error-block .tool-summary')?.click()`);
-    await shot('06-error-shown');
+  await step('06-error', async () => {
+    await invoke('session:prompt', id, 'now fail');
+    await ended('the failure');
+    const error = await last();
+    if (error?.kind !== 'error' || !error.detail.includes('failed on purpose')) fail('the turn ended in', error);
   });
-  await step('07-quote-reply', async () => {
-    // select the start of the assistant's answer, as a drag with the mouse would
-    await js(`(() => {
-      const p = document.querySelector('.transcript > .markdown p');
-      const range = document.createRange();
-      range.setStart(p.firstChild, 0);
-      range.setEnd(p.firstChild, Math.min(30, p.firstChild.length));
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    })()`);
-    await waitFor(`document.querySelector('.quote-popover input')`);
-    await shot('07-quote-popover');
-    await js(`(() => {
-      const input = document.querySelector('.quote-popover input');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'this reads well');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    })()`);
-    await waitFor(`document.querySelector('.quote-card') && !document.querySelector('.quote-popover')`);
-    await shot('07-quote-card');
-    await type('echo it back');
-    await waitFor(`!document.querySelector('.quote-card') && [...document.querySelectorAll('.user-message blockquote')].length > 0`);
-    await waitFor(`[...document.querySelectorAll('.transcript > .markdown')].some((m) => m.textContent.includes('quoted 1 line'))`);
-    await shot('07-quote-sent');
+  await step('07-quote', async () => {
+    const answer = text((await state()).items, 'assistant')[0];
+    await invoke('session:prompt', id, 'echo it back', [{ quote: answer.slice(0, 30), reply: 'this reads well' }]);
+    await ended('the echo');
+    const s = await state();
+    const sent = text(s.items, 'user').at(-1)!;
+    if (sent !== `> ${answer.slice(0, 30).trim()}\n\nthis reads well\n\necho it back`) fail('the prompt sent', sent);
+    if (!text(s.items, 'assistant').at(-1)!.includes('quoted 1 line')) fail('the answer', text(s.items, 'assistant').at(-1));
   });
-  // a long message clips behind Show more, a short one does not
-  await step('07-long-message', async () => {
-    const paragraphs = Array.from({ length: 14 }, (_, i) => `echo paragraph ${i + 1} of a long message.`);
-    await type(paragraphs.join('\n\n'));
-    const last = `[...document.querySelectorAll('.user-message')].pop()`;
-    await waitFor(`${last}.textContent.includes('paragraph 14') && !document.querySelector('.send.stop')`);
-    const clipped = await js<{ more: string | null; hidden: boolean; short: number }>(`({
-      more: ${last}.querySelector('.show-more')?.textContent ?? null,
-      hidden: ${last}.querySelector('.user-text').scrollHeight > ${last}.querySelector('.user-text').clientHeight,
-      short: [...document.querySelectorAll('.user-message')].slice(0, -1).filter((m) => m.querySelector('.show-more')).length,
-    })`);
-    if (clipped.more !== 'Show more' || !clipped.hidden || clipped.short) throw new Error(`the long message reads ${JSON.stringify(clipped)}`);
-    await js(`${last}.scrollIntoView({ block: 'center' })`);
-    await shot('07-long-message');
-    await js(`${last}.querySelector('.show-more').click()`);
-    await waitFor(`${last}.querySelector('.show-more').textContent === 'Show less' && !${last}.querySelector('.user-text.clip')`);
-    await js(`${last}.querySelector('.show-more').scrollIntoView({ block: 'center' })`);
-    await shot('07-long-message-open');
+  await step('07-mode', async () => {
+    await invoke('session:set-mode', id, 'plan');
+    const s = await state();
+    if (s.modes?.current !== 'plan' || s.info.mode !== 'plan') fail('the mode', { modes: s.modes, info: s.info });
   });
-  await step('07-mode-picker', async () => {
-    const picker = `[...document.querySelectorAll('.under-row .picker')].find((b) => b.textContent.trim() === 'Default')`;
-    await waitFor(`${picker}?.tagName === 'BUTTON'`);
-    await js(`${picker}.click()`);
-    await waitFor(`document.querySelector('.menu')`);
-    await shot('07-mode-menu');
-    await js(`[...document.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Plan Mode')).click()`);
-    await waitFor(`[...document.querySelectorAll('.under-row .picker')].some((b) => b.textContent.trim() === 'Plan Mode')`);
-  });
-  // the fake agent's commands, sent just after the session was created: a lone slash lists them all, typing filters them
-  // (names first, then descriptions), the keys move and pick, and a picked command is sent as typed text
+  // the fake agent's commands arrive just after the session is created; a prompt starting with one runs it
   await step('07-slash-commands', async () => {
-    await fill('/');
-    await waitFor(`document.querySelectorAll('.slash-menu .menu-item').length === 5`);
-    const first = await js<{ ghost: string | null; tip: string | null }>(`({
-      ghost: document.querySelector('.slash-ghost')?.textContent ?? null,
-      tip: document.querySelector('.slash-tip')?.textContent ?? null,
-    })`);
-    if (first.ghost !== '/Type to filter' || first.tip !== 'Summarise the conversation to free up context') throw new Error(`the open menu reads ${JSON.stringify(first)}`);
-    await shot('07-slash-menu');
-    await fill('/re');
-    await waitFor(`!document.querySelector('.slash-ghost')`);
-    const filtered = await slashRows();
-    // review by its name, compact by its description's "free"
-    if (filtered.join() !== 'review,compact') throw new Error(`/re lists ${filtered.join(', ')}`);
-    if ((await js<string>(`document.querySelector('.slash-menu .menu-item strong')?.textContent`)) !== 're') throw new Error('the match in a name is not bold');
-    await press('ArrowDown');
-    await waitFor(
-      `document.querySelector('.slash-menu .menu-item.active')?.textContent === 'compact' && document.querySelector('.slash-tip')?.textContent.startsWith('Summarise')`,
-    );
-    await shot('07-slash-filtered');
-    await press('Escape');
-    await waitFor(`!document.querySelector('.slash-menu')`);
-    await fill('/r');
-    await waitFor(`document.querySelector('.slash-menu')`);
-    await press('Tab');
-    await waitFor(`!document.querySelector('.slash-menu') && document.querySelector('.prompt-box textarea').value === '/review '`);
-    await type('/review main');
-    await waitFor(`[...document.querySelectorAll('.transcript > .markdown')].some((m) => m.textContent.includes('Ran /review with “main”'))`);
-    await waitFor(`!document.querySelector('.send.stop')`);
+    const s = await state();
+    if (s.commands.map((c) => c.name).join() !== 'compact,context,init,review,mcp') fail('the commands', s.commands);
+    await invoke('session:prompt', id, '/review main');
+    await ended('the command');
+    const answer = text((await state()).items, 'assistant').at(-1);
+    if (!answer?.includes('Ran /review with “main”')) fail('the answer', answer);
   });
-  await step('07-light-theme', async () => {
-    nativeTheme.themeSource = 'light';
-    await new Promise((r) => setTimeout(r, 400));
-    await js(`document.querySelector('.content').scrollTop = 0`);
-    await shot('07-light-theme');
-    nativeTheme.themeSource = 'system';
-  });
-  await step('07-restart-asks-first', async () => {
-    const restartButton = `document.querySelector('.ollama-panel button')`;
-    const openOllamaSettings = async () => {
-      await js(`document.querySelector('.status button[aria-label="Settings"]').click()`);
-      await waitFor(`document.querySelector('.settings-nav')`);
-      await js(`[...document.querySelectorAll('.settings-nav .nav-item')].find((b) => b.textContent === 'Ollama').click()`);
-      await waitFor(`${restartButton}`);
-    };
-    const escape = () => js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-
-    await type('slow while Ollama restarts');
-    await waitFor(`document.querySelector('.send.stop')`);
-    await openOllamaSettings();
-    // only a running Ollama is restarted, so only then can there be anything to interrupt
-    if ((await js<string>(`${restartButton}.textContent`)).includes('Restart Ollama')) {
-      await js(`${restartButton}.click()`);
-      await waitFor(`[...document.querySelectorAll('.confirm-items li')].some((li) => li.textContent.startsWith('Please make the readme'))`);
-      await shot('07-restart-confirm');
-      await escape();
-      await waitFor(`!document.querySelector('.confirm')`);
-      await new Promise((r) => setTimeout(r, 300));
-      if (!(await js<boolean>(`!!document.querySelector('.settings')`))) throw new Error('Escape on the confirmation closed Settings too');
-      if (await js<boolean>(`!!document.querySelector('.ollama-panel .setting-error')`)) throw new Error('declining the confirmation still restarted Ollama');
+  await step('07-restart', async () => {
+    await invoke('session:prompt', id, 'slow while Ollama restarts');
+    await until('the turn to start', async () => (await state()).turnStartedAt !== null);
+    const status = await invoke<OllamaStatus>('ollama:status');
+    const impact = await invoke<RestartImpact>('ollama:restart-impact');
+    if (status.reachable) {
+      if (impact.sessions.map((s) => s.id).join() !== id) fail('what a restart cuts off', impact);
     } else {
-      skipped.push('07-restart-asks-first: Ollama is not running, so a restart interrupts nothing and the dialog is not shown');
+      if (impact.sessions.length) fail('what a restart of an Ollama not running cuts off', impact);
+      skipped.push('07-restart: Ollama is not running, so a restart cuts off nothing');
     }
-    await escape();
-    await waitFor(`!document.querySelector('.settings')`);
-    await js(`document.querySelector('.send.stop').click()`);
-    await waitFor(`!document.querySelector('.send.stop')`);
-
-    // nothing working: the restart goes ahead unasked, into the smoke test's process control, which finds no Ollama to start
-    await openOllamaSettings();
-    await js(`${restartButton}.click()`);
-    await waitFor(`document.querySelector('.ollama-panel .setting-error')?.textContent.includes('found no Ollama')`);
-    if (await js<boolean>(`!!document.querySelector('.confirm')`)) throw new Error('the confirmation showed with nothing to interrupt');
-    await escape();
-    await waitFor(`!document.querySelector('.settings')`);
+    await invoke('session:cancel', id);
+    await ended('the stop');
+    // the smoke test's process control finds no Ollama to start, so the restart fails -- having stopped nothing
+    const server = await invoke<OllamaServerState>('ollama:server');
+    const refused = await refusal('ollama:restart');
+    if (server.unsupported) skipped.push(`07-restart: ${server.unsupported}`);
+    else if (!refused?.startsWith('wrontend found no Ollama to start')) fail('the restart', refused);
   });
-  await step('08-reload-restores', async () => {
-    const before = await js<number>(`document.querySelectorAll('.transcript > *').length`);
-    win.webContents.reload();
-    await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
-    await waitFor(`document.querySelector('.session-row')`);
-    await new Promise((r) => setTimeout(r, 500));
-    const rows = await js<number>(`document.querySelectorAll('.session-row').length`);
-    if (rows !== 1) throw new Error(`expected the one stored session after the reload, found ${rows}`);
-    await js(`document.querySelector('.session-row').click()`);
-    await waitFor(`document.querySelector('.transcript .user-message')`);
-    const after = await js<number>(`document.querySelectorAll('.transcript > *').length`);
-    const kept = await js<boolean>(
-      `!!document.querySelector('.transcript .markdown code') && [...document.querySelectorAll('.notice')].some((n) => n.textContent === 'Stopped') && !!document.querySelector('.error-block')`,
+  // what is on disk is what a later launch reads back: the host and the states rebuilt from it alone
+  await step('08-stored', async () => {
+    const reread = new SessionStates(
+      new AgentHost(
+        {} as ProxyServer,
+        app.getPath('userData'),
+        () => null,
+        () => {},
+      ),
+      () => {},
     );
-    if (!kept) throw new Error('the restored transcript lost its answer, its Stopped line or its error');
-    const mode = await js<boolean>(`[...document.querySelectorAll('.under-row .picker')].some((b) => b.textContent.trim() === 'Plan Mode')`);
-    if (!mode) throw new Error('the restored session no longer shows the mode it was left in');
-    // its harness is not running, and its commands come from disk
-    await fill('/');
-    await waitFor(`document.querySelectorAll('.slash-menu .menu-item').length === 5`);
-    await press('Escape');
-    await fill('');
-    // the tool group comes back collapsed, so fewer blocks are open than before
-    if (after < 6) throw new Error(`the transcript had ${before} blocks before the reload and ${after} after`);
-    await js(`document.querySelector('.content').scrollTop = 0`);
-    await shot('08-reload-restores');
+    const s = reread.list()[0];
+    const live = await state();
+    if (JSON.stringify(s.items) !== JSON.stringify(live.items))
+      fail(
+        'the stored transcript',
+        s.items.map((i) => i.kind),
+      );
+    if (s.info.mode !== 'plan' || s.modes?.current !== 'plan' || s.commands.length !== 5 || s.turnStartedAt !== null) fail('the stored session', s);
   });
-  // the title's menu: Rename in the top bar, then Delete, once by its letter and turned down, once by a click
-  await step('09-session-menu', async () => {
-    const openMenu = async () => {
-      await js(`document.querySelector('.top-bar .picker').click()`);
-      await waitFor(`document.querySelector('.top-bar .session-menu')`);
-    };
-    await openMenu();
-    const items = await js<string[]>(`[...document.querySelectorAll('.top-bar .session-menu .menu-item')].map((b) => b.textContent)`);
-    if (items.join(',') !== 'RenameR,DeleteD') throw new Error(`the session menu holds ${items.join(', ')}`);
-    if (!(await js<boolean>(`!!document.querySelector('.top-bar .session-menu .menu-rule') && !!document.querySelector('.top-bar .session-menu .menu-item.danger')`)))
-      throw new Error('Delete is not set apart by a rule and red');
-    await shot('09-session-menu');
-    await js(`[...document.querySelectorAll('.top-bar .menu-item')].find((b) => b.textContent.startsWith('Rename')).click()`);
-    await waitFor(`document.activeElement === document.querySelector('.top-bar .title-field')`);
-    await setTitle('Smoke session renamed');
-    await shot('09-rename-field');
-    await titleKey('Enter');
-    await waitFor(`!document.querySelector('.title-field') && document.querySelector('.top-bar .session-title')?.textContent === 'Smoke session renamed'`);
-    if (!(await js<boolean>(`document.querySelector('.session-row .name').textContent === 'Smoke session renamed'`))) throw new Error('the sidebar row kept the old title');
-    const stored = await js<string>(`window.wrontend.invoke('session:stored').then((s) => s[0].info.title)`);
-    if (stored !== 'Smoke session renamed') throw new Error(`the stored title is ${stored}`);
-
-    await openMenu();
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true }))`);
-    await waitFor(`document.querySelector('.confirm')?.textContent.includes('“Smoke session renamed” is removed from wrontend')`);
-    if (await js<boolean>(`!!document.querySelector('.session-menu')`)) throw new Error('the menu stays open under its dialog');
-    await shot('09-delete-confirm');
-    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Cancel').click()`);
-    await waitFor(`!document.querySelector('.confirm') && document.querySelector('.session-row')`);
-    await openMenu();
-    await js(`[...document.querySelectorAll('.top-bar .menu-item')].find((b) => b.textContent.startsWith('Delete')).click()`);
-    await waitFor(`document.querySelector('.confirm')`);
-    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Delete Session').click()`);
-    await waitFor(`!document.querySelector('.session-row') && document.querySelector('.greeting')`);
-    const left = await js<number>(`window.wrontend.invoke('session:stored').then((s) => s.length)`);
-    if (left !== 0) throw new Error(`${left} sessions are still stored after deleting the only one`);
-    // no harness runs for a session not yet made, so it offers no commands
-    await fill('/');
-    await new Promise((r) => setTimeout(r, 200));
-    if (await js<boolean>(`!!document.querySelector('.slash-menu')`)) throw new Error('the new-session screen offers slash commands');
-    await fill('');
-    await shot('09-new-session-screen');
+  await step('09-rename-and-delete', async () => {
+    await invoke('session:rename', id, 'Smoke session renamed');
+    if ((await state()).info.title !== 'Smoke session renamed') fail('the title', (await state()).info.title);
+    await invoke('session:rename', id, '   ');
+    if ((await state()).info.title !== 'Smoke session renamed') fail('an empty rename changed the title', (await state()).info.title);
+    await invoke('session:delete', id);
+    if ((await list()).length !== 0) fail('sessions left after deleting the only one', await list());
+    // the usage log outlives its session
+    const usage = await invoke<UsageSummary>('stats:summary');
+    if (usage.ranges.all.sessions !== 1 || usage.ranges.all.messages === 0) fail('the usage', usage.ranges.all);
   });
-  // clicks a control in the Settings dialog by its row's label and the control's text or title
-  const settingsClick = (label: string, control: string) =>
-    js(`(() => {
-      const row = [...document.querySelectorAll('.setting-row')].find((r) => r.querySelector('.setting-label')?.textContent === ${JSON.stringify(label)});
-      const button = [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === ${JSON.stringify(control)} || b.title === ${JSON.stringify(control)});
-      button.click();
-    })()`);
-  await step('10-settings-general', async () => {
-    await js(`document.querySelector('.status button[aria-label="Settings"]').click()`);
-    await waitFor(`document.querySelector('.settings .setting-row')`);
-    await settingsClick('Transcript width', 'Wide');
-    await waitFor(`document.documentElement.dataset.width === 'wide'`);
-    const stored = await js<string>(`window.wrontend.invoke('settings:get').then((s) => s.appearance.width)`);
-    if (stored !== 'wide') throw new Error(`the width was not stored: ${stored}`);
-    await shot('10-settings-general');
-    await settingsClick('Theme', 'Light');
-    await new Promise((r) => setTimeout(r, 400));
-    if (nativeTheme.themeSource !== 'light') throw new Error(`the theme source is ${nativeTheme.themeSource}`);
-    await shot('10-settings-light');
-    await settingsClick('Theme', 'System');
+  await step('10-settings', async () => {
+    await invoke('settings:set', { appearance: { theme: 'light' } });
+    if (nativeTheme.themeSource !== 'light') fail('the theme source', nativeTheme.themeSource);
+    await invoke('settings:set', { appearance: { theme: 'system' } });
+    // the preload passes the handler's own message on
+    const refused = await refusal('settings:set', { ollama: { address: 'not an address:::' } });
+    if (refused !== '“not an address:::” is not an address Ollama could be reached at.') fail('a bad address', refused);
   });
-  await step('11-settings-ollama', async () => {
-    await js(`[...document.querySelectorAll('.settings-nav .nav-item')].find((b) => b.textContent === 'Ollama').click()`);
-    await waitFor(`document.querySelector('.ollama-panel') && [...document.querySelectorAll('.setting-label')].some((l) => l.textContent === 'KV cache type')`);
-    if (await js<boolean>(`!!document.querySelector('.setting-pending')`)) throw new Error('a setting shows as pending before anything changed');
-    await settingsClick('KV cache type', 'q8_0');
-    await waitFor(`document.querySelector('.setting-pending')`);
-    const context = await js<string>(`[...document.querySelectorAll('.setting-row')].find((r) => r.textContent.startsWith('Context length')).querySelector('.select').textContent`);
-    if (!context.includes('64K')) throw new Error(`the stored context length shows as ${context}`);
-    await shot('11-settings-ollama');
+  await step('11-ollama-server', async () => {
+    const before = await invoke<OllamaServerState>('ollama:server');
+    if (before.values.OLLAMA_CONTEXT_LENGTH !== '65536' || before.pending.length) fail('the stored server settings', before);
+    const after = await invoke<OllamaServerState>('ollama:set-server', { OLLAMA_KV_CACHE_TYPE: 'q8_0' });
+    if (after.pending.join() !== 'OLLAMA_KV_CACHE_TYPE') fail('the pending settings', after);
   });
-  await step('12-settings-search-and-close', async () => {
-    await js(`(() => {
-      const input = document.querySelector('.settings-nav input');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'ollama');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    })()`);
-    await waitFor(`[...document.querySelectorAll('.setting-group h2')].some((h) => h.textContent.startsWith('Ollama'))`);
-    await shot('12-settings-search');
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-    await waitFor(`!document.querySelector('.settings')`);
+  // the autoprompt is no pick of the user's, so nothing is remembered yet
+  await step('12-defaults', async () => {
+    const value = await invoke<SessionDefaults>('session:defaults');
+    if (value.harness !== null || value.model !== null || value.effort !== 'on') fail('the defaults before any pick', value);
+    await invoke('session:set-defaults', { effort: 'off' });
+    await until('the change to be heard', async () => (await heard()).defaults.at(-1)?.effort === 'off');
+    await invoke('session:set-defaults', { effort: 'on' });
   });
 
-  // main's stand-in npm fails the first install and lets the second one through
-  const chip = `document.querySelector('.harness-chip')`;
+  // the stand-in npm fails the first install and lets the second one through. picking a harness that is not set up sets it up
+  const claude = async () => (await invoke<HarnessEntry[]>('harness:list')).find((h) => h.id === 'claude-code') ?? fail('no Claude Code', null);
   await step('13-harness-setup-fails', async () => {
-    await waitFor(`${chip}?.textContent === 'Choose Harness'`);
-    await js(`${chip}.click()`);
-    await waitFor(`[...document.querySelectorAll('.menu-item')].some((b) => b.textContent.includes('Claude Code') && b.textContent.includes('Downloads when picked'))`);
-    await shot('13-harness-menu');
-    await js(`[...document.querySelectorAll('.menu-item')].find((b) => b.textContent.includes('Claude Code')).click()`);
-    await waitFor(`document.querySelector('.setup-failed') && ${chip}.textContent === 'Claude Code'`);
-    await js(`document.querySelector('.setup-failed .tool-summary').click()`);
-    await waitFor(`document.querySelector('.setup-failed pre')?.textContent.includes('E404')`);
-    await shot('13-harness-setup-failed');
+    if ((await claude()).state.status !== 'missing') fail('Claude Code before its first pick', (await claude()).state);
+    await invoke('session:set-defaults', { harness: 'claude-code' });
+    await until('the setup to fail', async () => (await claude()).state.status === 'failed');
+    const state = (await claude()).state;
+    if (state.status !== 'failed' || !state.detail.includes('E404')) fail('the failure', state);
   });
-  await step('14-harness-first-pick', async () => {
-    await js(`[...document.querySelectorAll('.setup-failed button')].find((b) => b.textContent === 'Try Again').click()`);
-    await waitFor(`!document.querySelector('.setup-failed') && ${chip}.textContent.includes('Setting up Claude Code') && / MB$/.test(${chip}.textContent)`);
-    await shot('14-harness-installing');
-    await waitFor(`${chip}.textContent === 'Claude Code'`, 30_000);
-    const state = await js<{ status: string; version?: string }>(`window.wrontend.invoke('harness:list').then((l) => l.find((h) => h.id === 'claude-code').state)`);
-    if (state.status !== 'installed' || state.version !== '0.89.1') throw new Error(`Claude Code is ${JSON.stringify(state)} after setting it up`);
-    await js(`${chip}.click()`);
-    await waitFor(`[...document.querySelectorAll('.menu-item')].some((b) => b.textContent.includes('Version 0.89.1'))`);
-    await shot('14-harness-ready');
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await step('14-harness-set-up', async () => {
+    await invoke('harness:install', 'claude-code');
+    await until('the setup', async () => (await claude()).state.status === 'installed', 30_000);
+    const state = (await claude()).state;
+    if (state.status !== 'installed' || state.version !== '0.89.1') fail('Claude Code after its setup', state);
+    if (!(await heard()).harnesses.some((h) => h.state.status === 'installing' && h.state.bytes >= 1e6))
+      fail(
+        'no progress was heard',
+        (await heard()).harnesses.map((h) => h.state),
+      );
   });
-  await step('15-model-trash', async () => {
-    const models = await js<{ name: string }[]>(`window.wrontend.invoke('ollama:models')`);
+  await step('15-model-delete', async () => {
+    const models = await invoke<ModelEntry[]>('ollama:models');
     if (models.length === 0) {
-      skipped.push('15-model-trash: Ollama has no models, or is not running, so the picker has no row to delete');
+      skipped.push('15-model-delete: Ollama has no models, or is not running, so there is none to delete');
       return;
     }
-    const openPicker = async () => {
-      await js(`document.querySelector('.model-trigger').closest('button').click()`);
-      await waitFor(`document.querySelector('.menu .menu-row .menu-action')`);
-    };
-    await openPicker();
-    // the trash button shows while its row is pointed at: a real mouse move, since a scripted one sets no :hover
-    const at = await js<{ x: number; y: number }>(`(() => {
-      const r = document.querySelector('.menu .menu-row').getBoundingClientRect();
-      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-    })()`);
-    win.webContents.sendInputEvent({ type: 'mouseMove', x: at.x, y: at.y });
-    await waitFor(`getComputedStyle(document.querySelector('.menu .menu-action')).opacity === '1'`);
-    await shot('15-model-menu');
-
-    await js(`document.querySelector('.menu .menu-action').click()`);
-    await waitFor(`document.querySelector('.confirm')?.textContent.includes(${JSON.stringify(models[0].name)})`);
-    await shot('15-model-confirm');
-    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Cancel').click()`);
-    await waitFor(`!document.querySelector('.confirm')`);
-    if (await js<boolean>(`!!document.querySelector('.setup-failed')`)) throw new Error('declining the confirmation still tried to delete');
-
-    // this run deletes nothing from the user's Ollama: going ahead shows the refusal as a failed delete
-    await openPicker();
-    await js(`document.querySelector('.menu .menu-action').click()`);
-    await waitFor(`document.querySelector('.confirm')`);
-    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Delete Model').click()`);
-    await waitFor(`document.querySelector('.setup-failed')?.textContent.includes('This run deletes nothing from Ollama.')`);
-    await shot('15-model-delete-failed');
-    const after = await js<{ name: string }[]>(`window.wrontend.invoke('ollama:models')`);
-    if (after.length !== models.length) throw new Error('a model went missing in a run that deletes nothing');
-    await js(`document.querySelector('.setup-failed button[aria-label="Dismiss"]').click()`);
-    await waitFor(`!document.querySelector('.setup-failed')`);
+    const refused = await refusal('ollama:delete', models[0].name);
+    if (refused !== 'This run deletes nothing from Ollama.') fail('the delete', refused);
+    if ((await invoke<ModelEntry[]>('ollama:models')).length !== models.length) fail('a model went missing', models[0].name);
   });
-  // the browser reads a Hugging Face in memory, measures a fixed 16 GB card, and its downloads stop halfway and fail
-  await step('16-model-browser', async () => {
-    const button = (text: string) => `[...document.querySelectorAll('.browser button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)})`;
-    const search = (text: string) =>
-      js(`(() => {
-        const box = document.querySelector('.browser .search input');
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
-        box.dispatchEvent(new Event('input', { bubbles: true }));
-      })()`);
-
-    await js(`document.querySelector('.model-trigger').closest('button').click()`);
-    await waitFor(`document.querySelector('.menu .menu-footer')`);
-    await js(`document.querySelector('.menu .menu-footer').click()`);
-    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 3`);
-    await shot('16-browser-start');
-    await search('gemma');
-    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 1`);
-    await search('');
-    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 3`);
-
-    await js(`[...document.querySelectorAll('.browser .repo-row')].find((b) => b.textContent.includes('Qwen3.8-27B-GGUF')).click()`);
-    await waitFor(`document.querySelector('.quant-row.picked')?.textContent.includes('UD-IQ3_SRecommended')`);
-    const rows = await js<string[]>(
-      `[...document.querySelectorAll('.quant-row')].map((r) => r.querySelector('.quant-tag').textContent + ' ' + (r.querySelector('.fit')?.textContent ?? ''))`,
-    );
-    if (rows[0] !== 'UD-IQ2_XXS Fits on GPU' || rows.at(-1) !== 'BF16 Too large' || rows.length !== 9) throw new Error(`the quants read ${JSON.stringify(rows)}`);
-    await shot('16-browser-repo');
-
-    await js(`${button('Download')}.click()`);
-    await waitFor(`document.querySelector('.pull-bar .progress') && /Downloading UD-IQ3_S · [1-9]/.test(document.querySelector('.pull-bar').textContent)`);
-    await shot('16-browser-downloading');
-    await js(`${button('Cancel')}.click()`);
-    await waitFor(`!document.querySelector('.pull-bar .progress') && ${button('Download')}`);
-
-    // a download is something a restart of Ollama cuts off, so the restart asks first
-    await js(`${button('Download')}.click()`);
-    await waitFor(`document.querySelector('.pull-bar .progress')`);
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-    await waitFor(`!document.querySelector('.browser')`);
-    await js(`document.querySelector('.status button[aria-label="Settings"]').click()`);
-    await waitFor(`document.querySelector('.settings-nav')`);
-    await js(`[...document.querySelectorAll('.settings-nav .nav-item')].find((b) => b.textContent === 'Ollama').click()`);
-    await waitFor(`document.querySelector('.ollama-panel button')`);
-    if ((await js<string>(`document.querySelector('.ollama-panel button').textContent`)).includes('Restart Ollama')) {
-      await js(`document.querySelector('.ollama-panel button').click()`);
-      await waitFor(`[...document.querySelectorAll('.confirm-items li')].some((li) => li.textContent === 'Downloading hf.co/smoke-test/Qwen3.8-27B-GGUF:UD-IQ3_S')`);
-      await shot('16-restart-confirm-download');
-      await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Cancel').click()`);
-      await waitFor(`!document.querySelector('.confirm')`);
-    } else {
-      skipped.push('16-model-browser: Ollama is not running, so a restart interrupts no download and the dialog is not shown');
-    }
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-    await waitFor(`!document.querySelector('.settings')`);
-
-    // the download outlives the browser: opened again, it is still under way, then fails
-    await js(`document.querySelector('.model-trigger').closest('button').click()`);
-    await waitFor(`document.querySelector('.menu .menu-footer')`);
-    await js(`document.querySelector('.menu .menu-footer').click()`);
-    await waitFor(`document.querySelectorAll('.browser .repo-row').length === 3`);
-    await js(`[...document.querySelectorAll('.browser .repo-row')].find((b) => b.textContent.includes('Qwen3.8-27B-GGUF')).click()`);
-    await waitFor(`document.querySelector('.pull-bar.failed')?.textContent.includes('could not download')`, 10_000);
-    await js(`document.querySelector('.pull-bar.failed .tool-summary').click()`);
-    await shot('16-browser-failed');
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-    await waitFor(`!document.querySelector('.browser')`);
+  // Hugging Face is answered from memory, the machine is a fixed 16 GB card, and a download stops halfway and fails
+  await step('16-models', async () => {
+    if ((await invoke<RepoSummary[]>('models:search', '')).length !== 3) fail('the most downloaded', await invoke('models:search', ''));
+    if ((await invoke<RepoSummary[]>('models:search', 'gemma')).length !== 1) fail('the search', await invoke('models:search', 'gemma'));
+    const repo = await invoke<RepoDetails>('models:repo', 'smoke-test/Qwen3.8-27B-GGUF');
+    const quants = repo.quants.map((q) => `${q.tag} ${q.fit}`);
+    if (quants.length !== 9 || quants[0] !== 'UD-IQ2_XXS gpu' || quants.at(-1) !== 'BF16 too-large' || repo.recommended !== 'UD-IQ3_S')
+      fail('the quants', { quants, recommended: repo.recommended });
+    const quant = repo.quants.find((q) => q.tag === 'UD-IQ3_S')!;
+    const pull = async () => (await invoke<PullEntry[]>('models:pulls')).find((p) => p.name === quant.name)?.state;
+    await invoke('models:pull', quant.name);
+    await until('the download', async () => (await pull())?.status === 'installing' && ((await pull()) as { bytes: number }).bytes > 0);
+    const progress = await pull();
+    if (progress?.status !== 'installing' || pullSize(progress, quant, repo.projectorBytes) !== quant.sizeBytes + repo.projectorBytes) fail('the download size', progress);
+    await invoke('models:cancel-pull', quant.name);
+    await until('the cancel', async () => (await pull()) === undefined);
+    await invoke('models:pull', quant.name);
+    await until('the download', async () => (await pull())?.status === 'installing');
+    const impact = await invoke<RestartImpact>('ollama:restart-impact');
+    if ((await invoke<OllamaStatus>('ollama:status')).reachable && impact.downloads.join() !== quant.name) fail('what a restart cuts off', impact);
+    await until('the failure', async () => (await pull())?.status === 'failed', 10_000);
+    const failed = await pull();
+    if (failed?.status !== 'failed' || !failed.error.includes('could not download')) fail('the failed download', failed);
   });
 
   // the stand-in registry publishes Claude Code 0.90.0 once 0.89.1 is set up, the stand-in Ollama has a model with a newer upload,
-  // and an Ollama update waits: the updater offers all three, pins one and installs it
-  const icon = `document.querySelector('.status button[aria-label="Updates"]')`;
-  const rowOf = (name: string) => `[...document.querySelectorAll('.update-row')].find((r) => r.querySelector('.update-name').textContent.startsWith(${JSON.stringify(name)}))`;
-  const pickFrom = async (row: string, item: string) => {
-    const entry = `[...document.querySelectorAll('.update-row .menu-item')].find((b) => b.textContent.startsWith(${JSON.stringify(item)}))`;
-    await js(`${row}.querySelector('button[title="More"]').click()`);
-    await waitFor(entry);
-    await js(`${entry}.click()`);
-  };
-  const claude = rowOf('Claude Code');
-  const model = rowOf('hf.co/smoke-test/');
+  // and an Ollama update waits: the updater offers all three
+  const updates = () => invoke<UpdatesState>('updates:state');
+  const entry = async (entryId: string) => (await updates()).entries.find((e) => e.id === entryId);
+  const model = 'model:hf.co/smoke-test/Qwen3.8-27B-GGUF:UD-Q4_K_M';
   await step('17-updater', async () => {
-    await js(`window.wrontend.invoke('updates:check')`);
-    await waitFor(`${icon}.classList.contains('attention')`);
-    await js(`${icon}.click()`);
-    await waitFor(`${claude}?.textContent.includes('0.89.1 → 0.90.0') && ${model} && ${rowOf('Ollama')}`);
-    const groups = await js<string[]>(`[...document.querySelectorAll('.update-group .settings-area-label')].map((l) => l.textContent)`);
-    if (groups.join() !== 'Harnesses,Ollama,Models') throw new Error(`the groups read ${JSON.stringify(groups)}`);
-    await shot('17-updater');
-
-    await js(`${claude}.querySelector('button[title="More"]').click()`);
-    await waitFor(`document.querySelector('.update-row .menu')`);
-    await shot('17-updater-menu');
-    await js(`[...document.querySelectorAll('.update-row .menu-item')].find((b) => b.textContent.startsWith('Pin')).click()`);
-    await waitFor(`${claude}.classList.contains('pinned') && ![...${claude}.querySelectorAll('button')].some((b) => b.textContent === 'Update')`);
-    await shot('17-updater-pinned');
-    await pickFrom(claude, 'Unpin');
-    await waitFor(`!${claude}.classList.contains('pinned')`);
-
-    await js(`[...${claude}.querySelectorAll('button')].find((b) => b.textContent === 'Update').click()`);
-    await waitFor(`/Downloading Claude Code 0.90.0 · [1-9]/.test(${claude}?.textContent ?? '')`);
-    await shot('17-updater-updating');
-    if ((await js<string>(`document.querySelector('.harness-chip').textContent`)).includes('Setting up')) throw new Error('the harness reads as being set up while it updates');
-    await waitFor(`!${claude}`, 20_000);
-    const state = await js<{ status: string; version?: string }>(`window.wrontend.invoke('harness:list').then((l) => l.find((h) => h.id === 'claude-code').state)`);
-    if (state.status !== 'installed' || state.version !== '0.90.0') throw new Error(`Claude Code is ${JSON.stringify(state)} after updating it`);
+    await invoke('updates:check');
+    await until('the three updates', async () => (await updates()).entries.length === 3);
+    const found = (await updates()).entries.map((e) => `${e.group} ${e.current} ${e.available}`);
+    if (!found[0].startsWith('harnesses 0.89.1 0.90.0') || !found[1].startsWith('ollama 0.40.3 0.40.4') || !found[2].startsWith('models ')) fail('the updates', found);
+    await invoke('updates:pin', 'claude-code', true);
+    if (!(await entry('claude-code'))?.pinned) fail('the pin', await entry('claude-code'));
+    await invoke('updates:pin', 'claude-code', false);
+    await invoke('updates:install', 'claude-code');
+    await until('the update', async () => (await entry('claude-code')) === undefined, 20_000);
+    if (!(await heard()).updates.some((u) => u.entries.some((e) => e.id === 'claude-code' && e.state?.status === 'installing'))) fail('no progress was heard', 'claude-code');
+    const state = (await claude()).state;
+    if (state.status !== 'installed' || state.version !== '0.90.0') fail('Claude Code after its update', state);
   });
-  // the model's pull stops halfway and fails: the failure stays on its row, and skipping the upload takes the row away
+  // the model's pull stops halfway and fails: the failure stays on its entry, and skipping the upload takes it away
   await step('18-updater-model', async () => {
-    const text = await js<string>(`${model}.querySelector('.update-versions').textContent`);
-    if (text !== 'New upload · 12.0 GB to download') throw new Error(`the model's row reads ${text}`);
-    await js(`[...${model}.querySelectorAll('button')].find((b) => b.textContent === 'Update').click()`);
-    await waitFor(`${model}?.querySelector('.progress')`);
-    await shot('18-model-updating');
-    await waitFor(`${model}?.querySelector('.update-failure')`, 10_000);
-    await js(`${model}.querySelector('.update-failure').click()`);
-    if (!(await js<boolean>(`[...${model}.querySelectorAll('button')].some((b) => b.textContent === 'Try Again')`))) throw new Error('a failed update offers no Try Again');
-    await shot('18-model-failed');
-    await pickFrom(model, 'Skip This Version');
-    await waitFor(`!${model}`);
+    if ((await entry(model))?.bytes !== 12e9) fail("the model's update", await entry(model));
+    await invoke('updates:install', model);
+    await until('the failure', async () => (await entry(model))?.state?.status === 'failed', 10_000);
+    await invoke('updates:skip', model);
+    if (await entry(model)) fail('the skipped update', await entry(model));
   });
   // Ollama's update is a restart, which the stand-in makes in a moment; then nothing is out of date
   await step('19-updater-ollama', async () => {
-    const ollama = rowOf('Ollama');
-    const text = await js<string>(`${ollama}.textContent`);
-    if (!text.includes('0.40.3 → 0.40.4') || !text.includes('Update and Restart')) throw new Error(`Ollama's row reads ${text}`);
-    await shot('19-ollama-row');
-    await js(`[...${ollama}.querySelectorAll('button')].find((b) => b.textContent === 'Update and Restart').click()`);
-    await waitFor(`${ollama}?.textContent.includes('Updating Ollama')`);
-    await shot('19-ollama-updating');
-    await waitFor(`!${ollama} && document.querySelector('.updater-empty') && !${icon}.classList.contains('attention')`);
-    await shot('19-updater-empty');
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-    await waitFor(`!document.querySelector('.updater')`);
+    await invoke('updates:install', 'ollama');
+    await until('the restart', async () => (await updates()).entries.length === 0, 10_000);
   });
 
-  // two sessions in two folders, made through main and shown by a reload, the way stored sessions come back
-  await step('20-sidebar', async () => {
-    const project = realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-')));
-    const other = realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-sidebar-')));
-    removeAfterExit([project, other]);
-    for (const folder of [project, other]) {
-      await js(`window.wrontend.invoke('session:create', { harness: 'fake', folder: ${JSON.stringify(folder)}, model: 'smoke-model', effort: 'on' })`);
-    }
-    win.webContents.reload();
-    await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
-    await waitFor(`document.querySelectorAll('.group').length === 2`);
-    if (!(await js<boolean>(`document.querySelectorAll('.session-row .row-mark svg').length === 2`))) throw new Error('a session row is missing its harness icon');
-
-    const search = (text: string) =>
-      js(`(() => {
-        const box = document.querySelector('.search input');
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
-        box.dispatchEvent(new Event('input', { bubbles: true }));
-      })()`);
-    await search('SIDEBAR');
-    await waitFor(`document.querySelectorAll('.group').length === 1 && document.querySelectorAll('.session-row').length === 1`);
-    await shot('20-sidebar-search');
-    await search('nothing like this');
-    await waitFor(`document.querySelector('.sessions .empty-hint')?.textContent.includes('No sessions match')`);
-    await js(`document.querySelector('.search input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
-    await waitFor(`document.querySelectorAll('.group').length === 2 && document.querySelector('.search input').value === ''`);
-
-    // a collapsed group stays collapsed across a reload
-    await js(`document.querySelector('.group .group-label').click()`);
-    await waitFor(`document.querySelector('.group').classList.contains('closed') && document.querySelectorAll('.session-row').length === 1`);
-    win.webContents.reload();
-    await new Promise((r) => win.webContents.once('did-finish-load', () => r(null)));
-    await waitFor(`document.querySelector('.group.closed') && document.querySelectorAll('.session-row').length === 1`);
-    await shot('20-sidebar-collapsed');
-    await js(`document.querySelector('.group .group-label').click()`);
-    await waitFor(`document.querySelectorAll('.session-row').length === 2`);
-
-    // Back and Forward: new session, the first group's session, the second's
-    const back = `document.querySelector('.sidebar-top button[aria-label="Back"]')`;
-    const forward = `document.querySelector('.sidebar-top button[aria-label="Forward"]')`;
-    if (!(await js<boolean>(`${back}.disabled && ${forward}.disabled`))) throw new Error('Back or Forward is enabled with nothing opened yet');
-    await js(`document.querySelectorAll('.session-row')[0].click()`);
-    await js(`document.querySelectorAll('.session-row')[1].click()`);
-    await waitFor(`document.querySelectorAll('.session-row')[1].classList.contains('active')`);
-    await js(`${back}.click()`);
-    await waitFor(`document.querySelectorAll('.session-row')[0].classList.contains('active')`);
-    await js(`${back}.click()`);
-    await waitFor(`document.querySelector('.greeting') && ${back}.disabled && !${forward}.disabled`);
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }))`);
-    await waitFor(`document.querySelectorAll('.session-row')[0].classList.contains('active') && !${back}.disabled`);
-    await shot('20-sidebar-history');
-
-    // a group's + opens the new-session screen with its folder chosen
-    await js(`document.querySelectorAll('.group')[0].querySelector('.group-header .icon-button').click()`);
-    await waitFor(`document.querySelector('.greeting') && [...document.querySelectorAll('.chip.outline')].some((c) => c.title === ${JSON.stringify(other)})`);
-    await shot('20-sidebar-group-plus');
-
-    // hidden, the sidebar leaves its buttons in the top bar
-    await js(`document.querySelector('.sidebar-top button[aria-label="Hide Sidebar"]').click()`);
-    await waitFor(`!document.querySelector('.sidebar') && document.querySelector('.top-bar button[aria-label="Show Sidebar"]')`);
-    await js(`document.querySelector('.top-bar button[aria-label="Back"]').click()`);
-    await waitFor(`document.querySelector('.top-bar .session-title')`);
-    await shot('20-sidebar-hidden');
-    await js(`document.querySelector('.top-bar button[aria-label="Show Sidebar"]').click()`);
-    await waitFor(`document.querySelector('.sidebar')`);
+  await step('20-sessions-in-folders', async () => {
+    const folders = [0, 1].map(() => realpathSync.native(mkdtempSync(join(tmpdir(), 'wrontend-smoke-'))));
+    removeAfterExit(folders);
+    const made: SessionState[] = [];
+    for (const folder of folders) made.push(await invoke<SessionState>('session:create', { harness: 'fake', folder, model: 'smoke-model', effort: 'on' }));
+    const all = await list();
+    if (all.length !== 2 || all[0].info.id !== made[1].info.id || new Set(all.map((s) => s.info.folderId)).size !== 2)
+      fail(
+        'the sessions',
+        all.map((s) => s.info),
+      );
+    // a session created is the user's pick, which the next one starts with
+    const value = await invoke<SessionDefaults>('session:defaults');
+    if (value.harness !== 'fake' || value.model !== 'smoke-model' || value.effort !== 'on') fail('the defaults after a session', value);
+    await invoke('session:delete', made[0].info.id);
+    if ((await list()).map((s) => s.info.id).join() !== made[1].info.id) fail('the session left', await list());
   });
-
-  // a row's ⋮: shown on hover, its menu below it with the row lit; Rename in the row, Esc keeping the old title; Delete
-  await step('21-row-menu', async () => {
-    const row = `document.querySelectorAll('.session-item')[0]`;
-    const more = `${row}.querySelector('.row-more button')`;
-    const openMenu = async () => {
-      await js(`${more}.click()`);
-      await waitFor(`document.querySelector('.sidebar .session-menu')`);
+  // everything heard, applied to the list read at the start, is the list now. a change reaches the page a moment after the
+  // main process sends it -- the page's events and executeJavaScript travel apart -- so the mirror is given that moment to
+  // catch up
+  await step('21-mirror', async () => {
+    const differing = async () => {
+      const now = await list();
+      const mirror = (await heard()).sessions.reduce(applySessionChange, listed);
+      if (mirror.map((s) => s.info.id).join() !== now.map((s) => s.info.id).join()) return { mirror: mirror.map((s) => s.info.id), now: now.map((s) => s.info.id) };
+      const fields = now.flatMap((s, i) =>
+        (Object.keys(s) as (keyof SessionState)[]).filter((k) => JSON.stringify(s[k]) !== JSON.stringify(mirror[i][k])).map((k) => `${s.info.id} ${k}`),
+      );
+      return fields.length ? fields : null;
     };
-    if ((await js<string>(`getComputedStyle(${more}).opacity`)) !== '0') throw new Error('the ⋮ shows on a row nobody points at');
-    await openMenu();
-    const placed = await js<boolean>(`(() => {
-      const b = ${more}.getBoundingClientRect();
-      const m = document.querySelector('.session-menu').getBoundingClientRect();
-      return getComputedStyle(${more}).opacity === '1' && m.top >= b.bottom && Math.abs(m.right - b.right) < 1;
-    })()`);
-    if (!placed) throw new Error('the open menu is not below its ⋮, or the ⋮ hides');
-    await shot('21-row-menu');
-
-    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }))`);
-    await waitFor(`document.activeElement === ${row}.querySelector('.title-field')`);
-    await setTitle('Not kept');
-    await titleKey('Escape');
-    await waitFor(`!document.querySelector('.title-field')`);
-    if (!(await js<boolean>(`${row}.querySelector('.name').textContent === 'New session'`))) throw new Error('Esc kept the new title');
-
-    await openMenu();
-    await js(`[...document.querySelectorAll('.sidebar .session-menu .menu-item')].find((b) => b.textContent.startsWith('Rename')).click()`);
-    await waitFor(`${row}.querySelector('.title-field')`);
-    await setTitle('Sidebar renamed');
-    await shot('21-row-rename');
-    await titleKey('Enter');
-    await waitFor(`${row}.querySelector('.name')?.textContent === 'Sidebar renamed'`);
-    const titles = await js<string[]>(`window.wrontend.invoke('session:stored').then((s) => s.map((x) => x.info.title))`);
-    if (!titles.includes('Sidebar renamed')) throw new Error(`the stored titles are ${titles.join(', ')}`);
-
-    await openMenu();
-    await js(`[...document.querySelectorAll('.sidebar .session-menu .menu-item')].find((b) => b.textContent.startsWith('Delete')).click()`);
-    await waitFor(`document.querySelector('.confirm')?.textContent.includes('Sidebar renamed')`);
-    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Delete Session').click()`);
-    await waitFor(`document.querySelectorAll('.session-row').length === 1`);
-    const left = await js<number>(`window.wrontend.invoke('session:stored').then((s) => s.length)`);
-    if (left !== 1) throw new Error(`${left} sessions are stored after deleting one of two`);
+    await until('the mirror to catch up', async () => (await differing()) === null, 5_000).catch(async () => fail('the mirror differs', await differing()));
+    if ((await heard()).sessions.length < 50) fail('too few changes were heard', (await heard()).sessions.length);
   });
 
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
@@ -728,8 +395,12 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     `wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`,
   );
   // app.exit skips will-quit, where the harnesses are stopped otherwise; one left running would keep the project folder
-  stopHarnesses();
+  o.stopHarnesses();
   app.exit(passed ? 0 : 1);
+}
+
+function fail(what: string, value: unknown): never {
+  throw new Error(`${what}: ${JSON.stringify(value)}`);
 }
 
 // Electron keeps files open in its data folder for as long as it runs -- its caches, local storage, cookies -- and on

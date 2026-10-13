@@ -161,7 +161,7 @@ describe('derived models', () => {
     add('hf.co/x/Other-GGUF:Q4', 'e', { ...qwen38, architecture: 'llama', baseModel: 'meta/Llama-9' });
     expect(await derived.reasoning(engine, 'hf.co/x/Other-GGUF:Q4')).toMatchObject({ status: 'lost', reason: expect.stringContaining('knows no renderer') });
     settings.enabled = false;
-    expect(await derived.reasoning(engine, HF)).toMatchObject({ status: 'lost', reason: expect.stringContaining('turned off in Settings') });
+    expect(await derived.reasoning(engine, HF)).toMatchObject({ status: 'lost', reason: expect.stringContaining('turned off in its settings') });
     expect(await routeModel(engine, derived, HF)).toBe(HF);
 
     const old = setup({ version: '0.31.0' });

@@ -17,14 +17,18 @@ describe('the settings file', () => {
     writeFileSync(
       path,
       JSON.stringify({
-        appearance: { theme: 'dark', textSize: 'huge', width: 3, motion: 'reduced', extra: true },
+        appearance: { theme: 'dark', extra: true },
+        models: { derive: 'no' },
+        proxy: { backgroundPolicy: 'sometimes' },
         ollama: { address: 'http://box:11434' },
         stranger: { a: 1 },
       }),
     );
     const { value } = new SettingsStore(path);
-    expect(value.appearance).toEqual({ theme: 'dark', textSize: 'medium', width: 'medium', motion: 'reduced' });
+    expect(value.appearance).toEqual({ theme: 'dark' });
     expect(value.ollama.address).toBe('http://box:11434');
+    expect(value.models.derive).toBe(true);
+    expect(value.proxy.backgroundPolicy).toBe(DEFAULT_SETTINGS.proxy.backgroundPolicy);
     expect(value).not.toHaveProperty('stranger');
   });
 
@@ -37,10 +41,10 @@ describe('the settings file', () => {
   it('writes a change through and reports it', () => {
     const path = file();
     const seen: string[] = [];
-    const store = new SettingsStore(path, (s) => seen.push(s.appearance.width));
-    store.update({ appearance: { width: 'wide' } });
-    expect(seen).toEqual(['wide']);
-    expect(JSON.parse(readFileSync(path, 'utf8')).appearance.width).toBe('wide');
-    expect(new SettingsStore(path).value.appearance).toEqual({ ...DEFAULT_SETTINGS.appearance, width: 'wide' });
+    const store = new SettingsStore(path, (s) => seen.push(s.appearance.theme));
+    store.update({ appearance: { theme: 'light' } });
+    expect(seen).toEqual(['light']);
+    expect(JSON.parse(readFileSync(path, 'utf8')).appearance.theme).toBe('light');
+    expect(new SettingsStore(path).value.appearance).toEqual({ theme: 'light' });
   });
 });

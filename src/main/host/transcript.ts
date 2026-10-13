@@ -1,33 +1,11 @@
-// turns the stream of ACP session updates into the items the transcript shows
+// turns the stream of ACP session updates into the session's transcript
 
-import type { PlanEntry, SessionUpdate, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolKind } from '@agentclientprotocol/sdk';
-import type { EditedFile } from '@shared/session';
+import { randomUUID } from 'node:crypto';
+import type { SessionUpdate } from '@agentclientprotocol/sdk';
+import type { EditedFile, ToolItem, TranscriptItem } from '@shared/session';
 
-export interface ToolItem {
-  kind: 'tool';
-  id: string;
-  title: string;
-  toolKind: ToolKind | null;
-  status: ToolCallStatus;
-  content: ToolCallContent[];
-  // where the call worked; a harness may give each diff the line it starts on here
-  locations?: ToolCallLocation[];
-  rawInput: unknown;
-}
-
-export type TranscriptItem =
-  | { kind: 'user'; id: string; text: string }
-  | { kind: 'assistant'; id: string; text: string }
-  | { kind: 'thought'; id: string; text: string; startedAt: number; endedAt: number | null }
-  | ToolItem
-  | { kind: 'plan'; id: string; entries: PlanEntry[] }
-  // the files a finished turn changed, each as one diff from before the turn to after it
-  | { kind: 'edits'; id: string; files: EditedFile[] }
-  | { kind: 'error'; id: string; message: string; detail: string }
-  | { kind: 'notice'; id: string; text: string };
-
-let counter = 0;
-const nextId = (prefix: string) => `${prefix}-${++counter}`;
+// unique across launches: a stored transcript's items and a reopened session's new ones never share an id
+const nextId = (prefix: string) => `${prefix}-${randomUUID()}`;
 
 function textOf(content: { type: string; text?: string }): string {
   return content.type === 'text' ? (content.text ?? '') : '';
@@ -42,6 +20,7 @@ function closeThought(items: TranscriptItem[], now: number): TranscriptItem[] {
   return items;
 }
 
+// an update the transcript does not show leaves it as it is, the same array
 export function applyUpdate(items: TranscriptItem[], update: SessionUpdate, now = Date.now()): TranscriptItem[] {
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
@@ -116,30 +95,20 @@ export function endTurn(items: TranscriptItem[], now = Date.now()): TranscriptIt
   return closeThought(items, now);
 }
 
-// the card of the files a turn changed, at its end; a turn that changed none has no card
+// the files a turn changed, at its end; a turn that changed none adds nothing
 export function addEdits(items: TranscriptItem[], files: EditedFile[]): TranscriptItem[] {
   if (!files.length) return items;
   return [...closeThought(items, Date.now()), { kind: 'edits', id: nextId('f'), files }];
 }
 
-// a quiet line in the transcript, such as a turn the user stopped
 export function addNotice(items: TranscriptItem[], text: string): TranscriptItem[] {
   return [...closeThought(items, Date.now()), { kind: 'notice', id: nextId('n'), text }];
 }
 
-// consecutive tool calls between two pieces of text are shown as one group
-export type Block = { kind: 'item'; item: Exclude<TranscriptItem, ToolItem> } | { kind: 'tools'; id: string; tools: ToolItem[] };
-
-export function group(items: TranscriptItem[]): Block[] {
-  const blocks: Block[] = [];
-  for (const item of items) {
-    if (item.kind === 'tool') {
-      const last = blocks[blocks.length - 1];
-      if (last?.kind === 'tools') last.tools.push(item);
-      else blocks.push({ kind: 'tools', id: `g-${item.id}`, tools: [item] });
-    } else {
-      blocks.push({ kind: 'item', item });
-    }
-  }
-  return blocks;
+// where two versions of a transcript part: the index of the first item that is not the same object in both. the reducers
+// above keep every item they do not change, so everything before it is unchanged
+export function firstChange(before: TranscriptItem[], after: TranscriptItem[]): number {
+  const length = Math.min(before.length, after.length);
+  for (let i = 0; i < length; i++) if (before[i] !== after[i]) return i;
+  return length;
 }

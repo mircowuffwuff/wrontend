@@ -19,7 +19,7 @@ export interface Driver {
   remove?(id: string): Promise<void>;
 }
 
-// an install the user stopped: no failure to show, the component is back to its state before
+// an install the user stopped: no failure, the component is back to its state before
 export class CancelledError extends Error {
   constructor(id: string) {
     super(`${id} was cancelled`);

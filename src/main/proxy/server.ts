@@ -34,7 +34,7 @@ export class ProxyServer {
   private port = 0;
   private readonly routes = new Map<string, Route>();
 
-  // upstream is a function, so a changed Ollama address in Settings applies to the next request. resolveModel names the model a
+  // upstream is a function, so a changed Ollama address in the settings applies to the next request. resolveModel names the model a
   // pick is sent to -- its copy with a renderer, where wrontend makes one -- while the stats keep the pick's own name
   constructor(
     private readonly upstream: () => string,
@@ -144,7 +144,7 @@ export class ProxyServer {
       if (typeof value === 'string') headers[name] = value;
     }
 
-    // a harness that hangs up -- Stop in the UI -- cancels the generation in Ollama too
+    // a harness that hangs up -- a turn cancelled -- cancels the generation in Ollama too
     const controller = new AbortController();
     res.on('close', () => {
       if (!res.writableEnded) controller.abort();

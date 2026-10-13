@@ -1,6 +1,6 @@
 // Ollama's own updates: wrontend downloads and installs nothing for Ollama. its tray app checks ollama.com every hour,
 // downloads a newer installer into updates_v2\<hash>\OllamaSetup.exe, and runs it the next time it starts hidden -- as at
-// login, and as wrontend's Restart Ollama starts it. so the row appears while such an installer waits, and its update is
+// login, and as wrontend's Restart Ollama starts it. so the entry appears while such an installer waits, and its update is
 // that restart. the version is what ollama.com offers the running Ollama: the tray app asks the same question
 
 import { existsSync, readdirSync } from 'node:fs';

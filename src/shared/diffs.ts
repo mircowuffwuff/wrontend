@@ -1,4 +1,5 @@
-// diffs as hunks with real line numbers, and the one diff of a file from before a turn to after it
+// diffs as hunks with real line numbers, as rows to draw and as line counts, and the one diff of a file from before a turn
+// to after it
 
 import { structuredPatch } from 'diff';
 import type { ToolCallContent, ToolCallLocation } from '@agentclientprotocol/sdk';
@@ -43,7 +44,7 @@ export function hunksOf(oldText: string | null, newText: string, oldLine = 1, ne
 
 // null when timeoutMs runs out
 function timedHunks(oldText: string | null, newText: string, oldLine: number, newLine: number, timeoutMs?: number): DiffHunk[] | null {
-  // a missing final newline on one side only is not a change worth a row
+  // a missing final newline on one side only is not a change worth a line of its own
   const whole = (text: string) => (text && !text.endsWith('\n') ? `${text}\n` : text);
   const patch = structuredPatch('', '', whole(normalise(oldText ?? '')), whole(normalise(newText)), undefined, undefined, {
     context: 3,
@@ -57,7 +58,12 @@ function timedHunks(oldText: string | null, newText: string, oldLine: number, ne
   }));
 }
 
-export function countHunks(hunks: DiffHunk[]): { added: number; removed: number } {
+export interface LineCounts {
+  added: number;
+  removed: number;
+}
+
+export function countHunks(hunks: DiffHunk[]): LineCounts {
   let added = 0;
   let removed = 0;
   for (const h of hunks) {
@@ -67,6 +73,38 @@ export function countHunks(hunks: DiffHunk[]): { added: number; removed: number 
     }
   }
   return { added, removed };
+}
+
+// the lines a tool call's diffs add and remove
+export function countContent(content: ToolCallContent[]): LineCounts {
+  return countHunks(placeDiffs(content).flatMap((d) => hunksOf(d.oldText, d.newText)));
+}
+
+// a unified diff's rows: each line with its number -- in the new file, a removed line in the old -- and a fold for the
+// unchanged lines the hunks leave out, above the first hunk and between two
+export type DiffRow = { type: 'add' | 'remove' | 'same'; text: string; no: number } | { type: 'fold'; lines: number };
+
+export function diffRows(hunks: DiffHunk[]): DiffRow[] {
+  const rows: DiffRow[] = [];
+  let shownTo = 0;
+  for (const h of hunks) {
+    const first = Math.max(h.newStart, 1);
+    const hidden = first - 1 - shownTo;
+    if (hidden > 0) rows.push({ type: 'fold', lines: hidden });
+    let oldNo = Math.max(h.oldStart, 1);
+    let newNo = first;
+    for (const line of h.lines) {
+      const text = line.slice(1);
+      if (line.startsWith('+')) rows.push({ type: 'add', text, no: newNo++ });
+      else if (line.startsWith('-')) rows.push({ type: 'remove', text, no: oldNo++ });
+      else {
+        rows.push({ type: 'same', text, no: newNo++ });
+        oldNo++;
+      }
+    }
+    shownTo = newNo - 1;
+  }
+  return rows;
 }
 
 // where needle sits in text: whole lines first, any match after; with several, the one nearest the line, else none
@@ -104,7 +142,7 @@ export function before(after: string, edits: PlacedDiff[]): string | null {
 }
 
 // one file's diff across a turn. after is the file as it is now, or null when it cannot be read; a file whose state
-// before the turn cannot be worked out shows each edit's own diff instead. null when the edits undid each other
+// before the turn cannot be worked out gets each edit's own diff instead. null when the edits undid each other
 export function editedFile(path: string, after: string | null, edits: PlacedDiff[]): EditedFile | null {
   const earlier = after === null ? null : before(after, edits);
   const hunks = after !== null && earlier !== null ? timedHunks(earlier, after, 1, 1, WHOLE_FILE_MS) : null;

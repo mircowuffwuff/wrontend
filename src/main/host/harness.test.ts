@@ -10,12 +10,12 @@ import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { client, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import { describe, expect, it } from 'vitest';
-import type { SessionEvent } from '@shared/session';
 import { installedProgram } from '../components/testing';
 import { ProxyServer } from '../proxy/server';
 import { tempFolder } from '../temp-folder';
 import { AgentHost } from './agent-host';
 import { claudeCode } from './profiles';
+import type { SessionEvent } from './session';
 import { SessionStore } from './store';
 
 const on = process.env.WRONTEND_HARNESS_TESTS === '1';

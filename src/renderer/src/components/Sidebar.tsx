@@ -1,14 +1,16 @@
+import { useState } from 'react';
 import { outdated } from '@shared/updates';
 import { useDraft } from '../state/draft';
 import { useHarnesses } from '../state/harnesses';
 import { useOllama } from '../state/ollama';
-import { useSessions } from '../state/sessions';
+import { useSessions, type SessionView } from '../state/sessions';
 import { useSettings } from '../state/settings';
 import { folderName, groupSessions, useSidebar } from '../state/sidebar';
 import { useUpdates } from '../state/updates';
 import { HarnessIcon } from './HarnessIcon';
 import { Icon } from './Icon';
 import { Leaf } from './Leaf';
+import { SessionMenu, TitleField } from './SessionMenu';
 
 function gb(bytes: number): string {
   return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -66,6 +68,47 @@ function OllamaStatusRow() {
   );
 }
 
+// a session in its group: opens it, and a hovered row shows its menu at the right edge
+function SessionRow({ session, active, harnessName, onOpen }: { session: SessionView; active: boolean; harnessName: string; onOpen: () => void }) {
+  const [renaming, setRenaming] = useState(false);
+  // the harness's mark is the row's status dot as well: red while it needs input, the accent while it runs
+  const state = session.permissions.length ? 'asking' : session.running ? 'running' : 'idle';
+  const mark = (
+    <span className={`row-mark ${state}`} title={harnessName}>
+      <HarnessIcon harness={session.info.harness} size={14} />
+    </span>
+  );
+  if (renaming) {
+    return (
+      <div className="session-item">
+        <div className={`nav-item session-row renaming${active ? ' active' : ''}`}>
+          {mark}
+          <TitleField session={session} onDone={() => setRenaming(false)} />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="session-item">
+      <button className={`nav-item session-row${active ? ' active' : ''}`} onClick={onOpen}>
+        {mark}
+        <span className="name">{session.info.title}</span>
+      </button>
+      <div className="row-more">
+        <SessionMenu
+          session={session}
+          trigger={<Icon name="more" size={16} />}
+          triggerClass="icon-button small"
+          title="More"
+          align="end"
+          fixed
+          onRename={() => setRenaming(true)}
+        />
+      </div>
+    </div>
+  );
+}
+
 function SessionList() {
   const { sessions, order, activeId, open } = useSessions();
   const { query, collapsed, toggleGroup } = useSidebar();
@@ -103,19 +146,15 @@ function SessionList() {
               </button>
             </div>
             {!closed &&
-              ids.map((id) => {
-                const s = sessions[id];
-                // the harness's mark is the row's status dot as well: mustard while it needs input, the accent while it runs
-                const state = s.permissions.length ? 'asking' : s.running ? 'running' : 'idle';
-                return (
-                  <button key={id} className={`nav-item session-row${id === activeId ? ' active' : ''}`} onClick={() => open(id)}>
-                    <span className={`row-mark ${state}`} title={harnesses.find((h) => h.id === s.info.harness)?.name ?? s.info.harness}>
-                      <HarnessIcon harness={s.info.harness} size={14} />
-                    </span>
-                    <span className="name">{s.info.title}</span>
-                  </button>
-                );
-              })}
+              ids.map((id) => (
+                <SessionRow
+                  key={id}
+                  session={sessions[id]}
+                  active={id === activeId}
+                  harnessName={harnesses.find((h) => h.id === sessions[id].info.harness)?.name ?? sessions[id].info.harness}
+                  onOpen={() => open(id)}
+                />
+              ))}
           </div>
         );
       })}

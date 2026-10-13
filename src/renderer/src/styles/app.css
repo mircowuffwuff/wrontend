@@ -665,6 +665,11 @@ button.chip:hover {
   gap: 5px;
 }
 
+/* a session's menu: two short names, each with its letter */
+.session-menu {
+  min-width: 180px;
+}
+
 /* an item with its letter at the row's end */
 .menu-item.with-shortcut {
   display: grid;
@@ -734,6 +739,65 @@ button.chip:hover {
 }
 .row-mark.asking {
   color: var(--remove);
+}
+/* the row's menu: a ⋮ at its right edge while the row is pointed at, and the row stays lit while the menu is open */
+.session-item {
+  position: relative;
+  margin: 0 8px;
+}
+.session-item .session-row {
+  width: 100%;
+  margin: 0;
+}
+.session-item:hover .session-row,
+.session-item:has([aria-expanded='true']) .session-row {
+  padding-right: 34px;
+}
+.session-item:has([aria-expanded='true']) .session-row:not(.active) {
+  background: var(--hover);
+}
+/* no transform to centre it: the menu inside is placed against the window, and a transformed ancestor would move it */
+.row-more {
+  position: absolute;
+  top: 0;
+  right: 5px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+}
+.row-more .icon-button {
+  opacity: 0;
+}
+.session-item:hover .row-more .icon-button,
+.row-more .icon-button:focus-visible,
+.row-more .icon-button[aria-expanded='true'] {
+  opacity: 1;
+}
+.row-more .icon-button[aria-expanded='true'] {
+  background: var(--hover);
+  color: var(--text);
+}
+.session-row.renaming {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+/* a title being renamed, in its row or in the top bar */
+.title-field {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--accent);
+  border-radius: var(--leaf-sm);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+}
+.top-bar .title-field {
+  flex: 0 1 420px;
+  font-weight: 500;
 }
 
 /* transcript */

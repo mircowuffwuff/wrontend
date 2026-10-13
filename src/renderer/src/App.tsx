@@ -1,14 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { bridge } from './bridge';
 import { Composer } from './components/Composer';
 import { ConfirmDialog } from './components/Confirm';
 import { HarnessIcon } from './components/HarnessIcon';
 import { Icon } from './components/Icon';
 import { Leaf } from './components/Leaf';
-import { Menu } from './components/Menu';
 import { ModelBrowser } from './components/ModelBrowser';
 import { SettingsDialog } from './components/Settings';
 import { StatsCard } from './components/StatsCard';
+import { SessionMenu, TitleField } from './components/SessionMenu';
 import { NavButtons, Sidebar } from './components/Sidebar';
 import { Transcript } from './components/Transcript';
 import { UpdaterPanel } from './components/Updater';
@@ -16,10 +16,29 @@ import { startPullSync, useBrowser } from './state/browser';
 import { useDraft } from './state/draft';
 import { startHarnessSync, useHarnesses } from './state/harnesses';
 import { startOllamaSync } from './state/ollama';
-import { startSessionSync, useSessions } from './state/sessions';
+import { startSessionSync, useSessions, type SessionView } from './state/sessions';
 import { startSettingsSync, useSettings } from './state/settings';
 import { useSidebar } from './state/sidebar';
 import { startUpdatesSync, useUpdates } from './state/updates';
+
+// the session's title, which opens its menu; renamed in place
+function TopBarTitle({ session }: { session: SessionView }) {
+  const [renaming, setRenaming] = useState(false);
+  if (renaming) return <TitleField session={session} onDone={() => setRenaming(false)} />;
+  return (
+    <SessionMenu
+      session={session}
+      trigger={
+        <span className="session-title">
+          {session.info.title}
+          <Icon name="chevronDown" size={14} />
+        </span>
+      }
+      triggerClass="picker"
+      onRename={() => setRenaming(true)}
+    />
+  );
+}
 
 export function App() {
   useEffect(() => startSettingsSync(), []);
@@ -73,19 +92,7 @@ export function App() {
               <span className="harness-icon muted" title={harnessName}>
                 <HarnessIcon harness={session.info.harness} size={18} />
               </span>
-              <Menu
-                placement="below"
-                trigger={
-                  <span className="session-title">
-                    {session.info.title}
-                    <Icon name="chevronDown" size={14} />
-                  </span>
-                }
-                items={[{ key: 'delete', label: 'Delete Session', detail: 'Removes it from wrontend; the harness keeps its own history' }]}
-                onPick={(key) => {
-                  if (key === 'delete' && window.confirm(`Delete “${session.info.title}”?`)) void useSessions.getState().remove(session.info.id);
-                }}
-              />
+              <TopBarTitle key={session.info.id} session={session} />
               <span className="chip" title={session.info.folder}>
                 {session.info.folder.split(/[\\/]/).pop()}
               </span>

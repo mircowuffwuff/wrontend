@@ -74,6 +74,14 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
       box.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
   const press = (key: string) => js(`document.querySelector('.prompt-box textarea').dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`);
+  // sets the title being renamed the way typing does, and presses a key in it
+  const setTitle = (text: string) =>
+    js(`(() => {
+      const field = document.querySelector('.title-field');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, ${JSON.stringify(text)});
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+  const titleKey = (key: string) => js(`document.querySelector('.title-field').dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`);
   const slashRows = () => js<string[]>(`[...document.querySelectorAll('.slash-menu .menu-item')].map((b) => b.textContent)`);
   const step = async (name: string, run: () => Promise<void>) => {
     const started = Date.now();
@@ -231,7 +239,9 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     if (filtered.join() !== 'review,compact') throw new Error(`/re lists ${filtered.join(', ')}`);
     if ((await js<string>(`document.querySelector('.slash-menu .menu-item strong')?.textContent`)) !== 're') throw new Error('the match in a name is not bold');
     await press('ArrowDown');
-    await waitFor(`document.querySelector('.slash-menu .menu-item.active')?.textContent === 'compact' && document.querySelector('.slash-tip')?.textContent.startsWith('Summarise')`);
+    await waitFor(
+      `document.querySelector('.slash-menu .menu-item.active')?.textContent === 'compact' && document.querySelector('.slash-tip')?.textContent.startsWith('Summarise')`,
+    );
     await shot('07-slash-filtered');
     await press('Escape');
     await waitFor(`!document.querySelector('.slash-menu')`);
@@ -300,7 +310,9 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await js(`document.querySelector('.session-row').click()`);
     await waitFor(`document.querySelector('.transcript .user-message')`);
     const after = await js<number>(`document.querySelectorAll('.transcript > *').length`);
-    const kept = await js<boolean>(`!!document.querySelector('.transcript .markdown code') && [...document.querySelectorAll('.notice')].some((n) => n.textContent === 'Stopped') && !!document.querySelector('.error-block')`);
+    const kept = await js<boolean>(
+      `!!document.querySelector('.transcript .markdown code') && [...document.querySelectorAll('.notice')].some((n) => n.textContent === 'Stopped') && !!document.querySelector('.error-block')`,
+    );
     if (!kept) throw new Error('the restored transcript lost its answer, its Stopped line or its error');
     const mode = await js<boolean>(`[...document.querySelectorAll('.under-row .picker')].some((b) => b.textContent.trim() === 'Plan Mode')`);
     if (!mode) throw new Error('the restored session no longer shows the mode it was left in');
@@ -314,13 +326,39 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await js(`document.querySelector('.content').scrollTop = 0`);
     await shot('08-reload-restores');
   });
-  await step('09-delete-session', async () => {
-    // the confirmation is answered yes: a hidden window cannot show a dialog
-    await js(`window.confirm = () => true; true`);
-    await js(`document.querySelector('.top-bar .picker').click()`);
-    await waitFor(`document.querySelector('.top-bar .menu')`);
+  // the title's menu: Rename in the top bar, then Delete, once by its letter and turned down, once by a click
+  await step('09-session-menu', async () => {
+    const openMenu = async () => {
+      await js(`document.querySelector('.top-bar .picker').click()`);
+      await waitFor(`document.querySelector('.top-bar .session-menu')`);
+    };
+    await openMenu();
+    const items = await js<string[]>(`[...document.querySelectorAll('.top-bar .session-menu .menu-item')].map((b) => b.textContent)`);
+    if (items.join(',') !== 'RenameR,DeleteD') throw new Error(`the session menu holds ${items.join(', ')}`);
+    if (!(await js<boolean>(`!!document.querySelector('.top-bar .session-menu .menu-rule') && !!document.querySelector('.top-bar .session-menu .menu-item.danger')`)))
+      throw new Error('Delete is not set apart by a rule and red');
     await shot('09-session-menu');
-    await js(`[...document.querySelectorAll('.top-bar .menu-item')].find((b) => b.textContent.includes('Delete Session')).click()`);
+    await js(`[...document.querySelectorAll('.top-bar .menu-item')].find((b) => b.textContent.startsWith('Rename')).click()`);
+    await waitFor(`document.activeElement === document.querySelector('.top-bar .title-field')`);
+    await setTitle('Smoke session renamed');
+    await shot('09-rename-field');
+    await titleKey('Enter');
+    await waitFor(`!document.querySelector('.title-field') && document.querySelector('.top-bar .session-title')?.textContent === 'Smoke session renamed'`);
+    if (!(await js<boolean>(`document.querySelector('.session-row .name').textContent === 'Smoke session renamed'`))) throw new Error('the sidebar row kept the old title');
+    const stored = await js<string>(`window.wrontend.invoke('session:stored').then((s) => s[0].info.title)`);
+    if (stored !== 'Smoke session renamed') throw new Error(`the stored title is ${stored}`);
+
+    await openMenu();
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true }))`);
+    await waitFor(`document.querySelector('.confirm')?.textContent.includes('“Smoke session renamed” is removed from wrontend')`);
+    if (await js<boolean>(`!!document.querySelector('.session-menu')`)) throw new Error('the menu stays open under its dialog');
+    await shot('09-delete-confirm');
+    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Cancel').click()`);
+    await waitFor(`!document.querySelector('.confirm') && document.querySelector('.session-row')`);
+    await openMenu();
+    await js(`[...document.querySelectorAll('.top-bar .menu-item')].find((b) => b.textContent.startsWith('Delete')).click()`);
+    await waitFor(`document.querySelector('.confirm')`);
+    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Delete Session').click()`);
     await waitFor(`!document.querySelector('.session-row') && document.querySelector('.greeting')`);
     const left = await js<number>(`window.wrontend.invoke('session:stored').then((s) => s.length)`);
     if (left !== 0) throw new Error(`${left} sessions are still stored after deleting the only one`);
@@ -460,7 +498,9 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
 
     await js(`[...document.querySelectorAll('.browser .repo-row')].find((b) => b.textContent.includes('Qwen3.8-27B-GGUF')).click()`);
     await waitFor(`document.querySelector('.quant-row.picked')?.textContent.includes('UD-IQ3_SRecommended')`);
-    const rows = await js<string[]>(`[...document.querySelectorAll('.quant-row')].map((r) => r.querySelector('.quant-tag').textContent + ' ' + (r.querySelector('.fit')?.textContent ?? ''))`);
+    const rows = await js<string[]>(
+      `[...document.querySelectorAll('.quant-row')].map((r) => r.querySelector('.quant-tag').textContent + ' ' + (r.querySelector('.fit')?.textContent ?? ''))`,
+    );
     if (rows[0] !== 'UD-IQ2_XXS Fits on GPU' || rows.at(-1) !== 'BF16 Too large' || rows.length !== 9) throw new Error(`the quants read ${JSON.stringify(rows)}`);
     await shot('16-browser-repo');
 
@@ -638,9 +678,55 @@ export async function runSmoke(win: BrowserWindow, out: string, stopHarnesses: (
     await waitFor(`document.querySelector('.sidebar')`);
   });
 
+  // a row's ⋮: shown on hover, its menu below it with the row lit; Rename in the row, Esc keeping the old title; Delete
+  await step('21-row-menu', async () => {
+    const row = `document.querySelectorAll('.session-item')[0]`;
+    const more = `${row}.querySelector('.row-more button')`;
+    const openMenu = async () => {
+      await js(`${more}.click()`);
+      await waitFor(`document.querySelector('.sidebar .session-menu')`);
+    };
+    if ((await js<string>(`getComputedStyle(${more}).opacity`)) !== '0') throw new Error('the ⋮ shows on a row nobody points at');
+    await openMenu();
+    const placed = await js<boolean>(`(() => {
+      const b = ${more}.getBoundingClientRect();
+      const m = document.querySelector('.session-menu').getBoundingClientRect();
+      return getComputedStyle(${more}).opacity === '1' && m.top >= b.bottom && Math.abs(m.right - b.right) < 1;
+    })()`);
+    if (!placed) throw new Error('the open menu is not below its ⋮, or the ⋮ hides');
+    await shot('21-row-menu');
+
+    await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }))`);
+    await waitFor(`document.activeElement === ${row}.querySelector('.title-field')`);
+    await setTitle('Not kept');
+    await titleKey('Escape');
+    await waitFor(`!document.querySelector('.title-field')`);
+    if (!(await js<boolean>(`${row}.querySelector('.name').textContent === 'New session'`))) throw new Error('Esc kept the new title');
+
+    await openMenu();
+    await js(`[...document.querySelectorAll('.sidebar .session-menu .menu-item')].find((b) => b.textContent.startsWith('Rename')).click()`);
+    await waitFor(`${row}.querySelector('.title-field')`);
+    await setTitle('Sidebar renamed');
+    await shot('21-row-rename');
+    await titleKey('Enter');
+    await waitFor(`${row}.querySelector('.name')?.textContent === 'Sidebar renamed'`);
+    const titles = await js<string[]>(`window.wrontend.invoke('session:stored').then((s) => s.map((x) => x.info.title))`);
+    if (!titles.includes('Sidebar renamed')) throw new Error(`the stored titles are ${titles.join(', ')}`);
+
+    await openMenu();
+    await js(`[...document.querySelectorAll('.sidebar .session-menu .menu-item')].find((b) => b.textContent.startsWith('Delete')).click()`);
+    await waitFor(`document.querySelector('.confirm')?.textContent.includes('Sidebar renamed')`);
+    await js(`[...document.querySelectorAll('.confirm button')].find((b) => b.textContent === 'Delete Session').click()`);
+    await waitFor(`document.querySelectorAll('.session-row').length === 1`);
+    const left = await js<number>(`window.wrontend.invoke('session:stored').then((s) => s.length)`);
+    if (left !== 1) throw new Error(`${left} sessions are stored after deleting one of two`);
+  });
+
   const passed = steps.every((s) => s.ok) && consoleErrors.length === 0;
   await writeFile(join(out, 'report.json'), JSON.stringify({ passed, steps, skipped, consoleErrors }, null, 2));
-  console.log(`wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`);
+  console.log(
+    `wrontend smoke: ${passed ? 'passed' : 'FAILED'} -- ${steps.filter((s) => s.ok).length}/${steps.length} steps, ${consoleErrors.length} console errors, report in ${out}`,
+  );
   // app.exit skips will-quit, where the harnesses are stopped otherwise; one left running would keep the project folder
   stopHarnesses();
   app.exit(passed ? 0 : 1);
